@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ハンディー検品画面</title>
+  <link rel="stylesheet" href="css/inspection.css" />
+</head>
+<body class="inspection-page">
+  <main class="inspection-layout" aria-label="検品実行画面">
+    <header class="inspection-header">
+      <h1>ハンディー検品画面</h1>
+      <div class="inspection-header-grid">
+        <div><span>作業ID</span><strong id="workId">-</strong></div>
+        <div><span>お届け先</span><strong id="recipientName">-</strong></div>
+        <div><span>ステータス</span><strong id="workStatus">未着手</strong></div>
+        <div><span>進捗(SKU)</span><strong id="skuProgress">0 / 0</strong></div>
+        <div><span>進捗(数量)</span><strong id="qtyProgress">0 / 0</strong></div>
+        <div><span>作業者</span><strong id="workerId">-</strong></div>
+      </div>
+      <div class="inspection-header-actions">
+        <span id="syncStatus" class="inspection-status-badge inspection-status-badge--idle">待機中</span>
+        <button type="button" id="pauseButton">中断</button>
+        <button type="button" id="resetButton" class="inspection-button--danger">リセット</button>
+        <button type="button" id="completeButton" disabled title="全明細完了で自動完了のため通常は不要">完了（将来拡張）</button>
+      </div>
+    </header>
+
+    <section class="inspection-scan-panel" aria-label="バーコード入力">
+      <label for="scanCodeInput">バーコード</label>
+      <div class="inspection-scan-row">
+        <input id="scanCodeInput" autocomplete="off" inputmode="text" />
+        <button type="button" id="scanSubmitButton">送信</button>
+      </div>
+      <div class="inspection-qty-mode">
+        <label><input type="checkbox" id="qtyModeToggle" /> 数量入力モード（OFF時: 1スキャン=1個）</label>
+        <input id="scanQtyInput" type="number" min="1" step="1" value="1" disabled />
+      </div>
+    </section>
+
+    <section class="inspection-main-panels">
+      <article id="judgePanel" class="inspection-judge inspection-judge--idle" aria-live="polite">
+        <p id="mainMsgTxt">待機中</p>
+        <p id="judgeSubText">バーコードをスキャンしてください</p>
+      </article>
+      <article class="inspection-detail" id="detailPanel" aria-live="polite"></article>
+    </section>
+
+    <section class="inspection-list" aria-label="検品明細">
+      <h2>検品明細一覧</h2>
+      <ul id="detailList"></ul>
+    </section>
+  </main>
+
+  <dialog id="confirmDialog">
+    <p id="confirmMessage"></p>
+    <div class="dialog-actions">
+      <button id="confirmOk" type="button">実行</button>
+      <button id="confirmCancel" type="button">キャンセル</button>
+    </div>
+  </dialog>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/inspection-state.js"></script>
+  <script src="js/inspection-repository.js"></script>
+  <script src="js/inspection.js"></script>
+</body>
+</html>
