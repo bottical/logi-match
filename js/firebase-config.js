@@ -2,12 +2,12 @@
 // IMPORTANT: Replace all YOUR_* placeholders with values from your real Firebase project.
 // NOTE: Firebase config is not a secret key; protect data with strict Firestore Security Rules in production.
 window.firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT_ID.firebaseapp.com',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID',
-  appId: 'YOUR_APP_ID'
+    apiKey: "AIzaSyCbRTnvbIgFTKzVWYClRzULmAxjj1-KtpE",
+    authDomain: "logi-match.firebaseapp.com",
+    projectId: "logi-match",
+    storageBucket: "logi-match.firebasestorage.app",
+    messagingSenderId: "406394358655",
+    appId: "1:406394358655:web:e51e7768b3def9c74ba84a"
 };
 
 (function initFirebase() {
