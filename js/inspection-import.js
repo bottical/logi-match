@@ -49,7 +49,6 @@
       await db().collection('inspectionImportBatches').doc(batchId).set({batch_id:batchId,imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),imported_by:window.auth?.currentUser?.email||'unknown-user',source_file_name:file.name,encoding,status:batchStatus,success_work_count:successWorks,success_detail_count:successDetails,source_row_count:rows.length-1,error_count:errors.length,warning_count:warnings.length,errors,warnings});
       $('importStatus').textContent=successWorks===0?'取込失敗':'取込完了'; $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} エラー:${errors.length} 警告:${warnings.length}`;
       renderMessages('importErrors', errors.map(e=>`行${e.row}: ${e.reason} (${e.summary})`)); renderMessages('importWarnings', warnings);
-      if(window.inspectionList?.reload) window.inspectionList.reload();
     } catch (e) {
       console.error('[import] failed', e); fail(`取込失敗: ${e.message || e}`);
     }
