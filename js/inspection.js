@@ -93,7 +93,7 @@
     state.work.status = 'current';
     state.work.current_worker_id = getCurrentUserId();
     const allDone = state.details.every(d=>d.completed_flag);
-    if (allDone){ state.work.status = 'completed'; state.work.completed_flag = true; state.work.completed_at = new Date().toISOString(); setJudge('ok','作業完了','全明細が完了しました'); playSound('strong-complete'); }
+    if (allDone){ state.work.status = 'completed'; state.work.completed_flag = true; state.work.completed_at = new Date().toISOString(); state.work.current_worker_id = null; setJudge('ok','作業完了','全明細が完了しました'); playSound('strong-complete'); }
     else if (detail.completed_flag){ setJudge('complete','明細完了',detail.product_name); playSound('complete'); }
     else { setJudge('ok','OK',detail.product_name); playSound('ok'); }
     resetQtyMode(); render(); persistAsync('scan', { scanCode: raw, detailId: detail.detail_id, qtyDelta: qty }); focusScanInput(); }
@@ -110,7 +110,7 @@
   $('scanSubmitButton').addEventListener('click', runScan);
   $('scanCodeInput').addEventListener('keydown',(e)=>{ if (e.key==='Enter'){ e.preventDefault(); runScan(); }});
   $('qtyModeToggle').addEventListener('change',(e)=>{ state.qtyMode.enabled=e.target.checked; $('scanQtyInput').disabled=!state.qtyMode.enabled; if (state.qtyMode.enabled) $('scanQtyInput').focus(); else focusScanInput(); });
-  $('pauseButton').addEventListener('click',()=>confirmAction('この作業を中断します。よろしいですか？',()=>{ state.work.status='suspended'; state.work.suspended_at = new Date().toISOString(); state.lock={locked:false,reason:null,worker_id:null,started_at:null}; setJudge('warning','中断','作業を中断しました'); render(); persistAsync('suspend'); }));
+  $('pauseButton').addEventListener('click',()=>confirmAction('この作業を中断します。よろしいですか？',()=>{ state.work.status='suspended'; state.work.suspended_at = new Date().toISOString(); state.work.current_worker_id = null; state.lock={locked:false,reason:null,worker_id:null,started_at:null}; setJudge('warning','中断','作業を中断しました'); render(); persistAsync('suspend'); }));
   $('resetButton').addEventListener('click',()=>confirmAction('この作業の検品実績をすべて0に戻します。\nこの操作は現場作業に影響します。実行してよろしいですか？',()=>{ state.details.forEach(d=>{d.actual_qty=0; d.completed_flag=false;}); state.work.status='unstarted'; state.work.completed_flag=false; state.work.current_worker_id=null; state.recentScan=null; setJudge('warning','リセット完了','実績を初期化しました'); render(); persistAsync('reset'); }));
 
   async function init() {
@@ -119,16 +119,39 @@
       if (workId && typeof window.loadInspectionState === 'function') {
         const loadedState = await window.loadInspectionState(workId);
         if (!loadedState) {
-          lockByLoadError('指定された作業IDが見つかりません');
+          state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+          state.syncStatus = 'failed';
+          setJudge('locked', '作業データなし', '指定された作業IDが見つかりません');
+          render();
           return;
         }
         Object.assign(state, loadedState);
+        applyCurrentUserToState();
+
+        if (!state.work.completed_flag && state.work.status !== 'completed' && typeof window.acquireWorkLock === 'function') {
+          const lockResult = await window.acquireWorkLock(workId, getCurrentUserId());
+          if (lockResult.ok) {
+            state.work.status = 'current';
+            state.work.current_worker_id = getCurrentUserId();
+            state.lock = { locked: false, reason: null, worker_id: null, started_at: null };
+          } else if (lockResult.reason === 'locked') {
+            state.lock = { locked: true, reason: 'work-locked', worker_id: lockResult.workerId || null, started_at: lockResult.startedAt || null };
+            setJudge('locked', '他の作業者が作業中', `${lockResult.workerId || '-'} が作業中です`);
+          } else if (lockResult.reason === 'completed') {
+            state.work.status = 'completed';
+            state.work.completed_flag = true;
+            state.lock = { locked: true, reason: 'completed', worker_id: null, started_at: null };
+            setJudge('locked', '完了済み', 'この作業はすでに完了しています');
+          } else if (lockResult.reason === 'not-found') {
+            state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+            setJudge('locked', '作業データなし', '指定された作業IDが見つかりません');
+          }
+        }
       } else {
         state.syncStatus = 'offline';
         state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
         setJudge('locked', '作業ID未指定', 'URLに work_id が指定されていないため、検品を開始できません');
       }
-      applyCurrentUserToState();
       render();
       focusScanInput();
     } catch (error) {
