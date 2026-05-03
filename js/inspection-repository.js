@@ -157,10 +157,6 @@
     });
   };
 
-  // TODO: inspectionWorks/{work_id}/details/{detail_id} から明細を取得する構造へ移行する
-  // TODO: implement acquireWorkLock(workId, workerId) with Firestore transaction.
-  // It should atomically set work.status=current/current_worker_id when unstarted or suspended.
-  // It should reject when another worker is already current.
   window.loadInspectionState = async function loadInspectionState(workId) {
     if (!window.db) {
       throw new Error('Firestore is not initialized.');
