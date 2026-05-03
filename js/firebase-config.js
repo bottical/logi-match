@@ -13,6 +13,7 @@ window.firebaseConfig = {
 (function initFirebase() {
   if (!window.firebase) {
     console.error('[firebase] Firebase SDK is not loaded.');
+    const node = document.getElementById('firebaseStatus'); if (node) node.textContent = 'Firebase未接続';
     return;
   }
 
@@ -23,5 +24,8 @@ window.firebaseConfig = {
   window.db = window.firebase.firestore();
   window.auth = window.firebase.auth ? window.firebase.auth() : null;
 
+  const node = document.getElementById('firebaseStatus'); if (node) node.textContent = 'Firebase接続済み';
   console.info('[firebase] initialized');
 })();
+
+// Required collections: inspectionWorks, inspectionImportBatches, inspectionWorks/{work_id}/scanLogs, inspectionWorks/{work_id}/operationLogs

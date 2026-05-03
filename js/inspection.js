@@ -20,7 +20,7 @@
   }
 
   function setJudge(type, main, sub=''){ const panel=$('judgePanel'); panel.className = `inspection-judge inspection-judge--${type}`; $('mainMsgTxt').textContent = main; $('judgeSubText').textContent = sub; panel.classList.remove('inspection-flash'); void panel.offsetWidth; panel.classList.add('inspection-flash'); }
-  function lockByLoadError(message = '作業データを取得できません。通信状態を確認してください') {
+  function lockByLoadError(message = '作業データを取得できません。通信状態、または作業IDの存在を確認してください。') {
     state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
     state.syncStatus = 'failed';
     setJudge('locked', '読込失敗', message);
@@ -80,7 +80,7 @@
       focusScanInput();
       return;
     }
-    if (state.lock.locked){ if (state.lock.reason === 'sync-error') { setJudge('locked','同期失敗により停止中','直前の読取結果は画面上に反映済みです。再読取せず管理者へ確認してください'); } else if (state.lock.reason === 'load-error') { setJudge('locked', '読込失敗', '作業データを取得できません。通信状態を確認してください'); } else { setJudge('locked','他の作業者が作業中',`${state.lock.worker_id ?? '-'} ${state.lock.started_at ?? ''}`); } playSound('warning'); focusScanInput(); return; }
+    if (state.lock.locked){ if (state.lock.reason === 'sync-error') { setJudge('locked','同期失敗により停止中','直前の読取結果は画面上に反映済みです。再読取せず管理者へ確認してください'); } else if (state.lock.reason === 'load-error') { setJudge('locked', '読込失敗', '作業データを取得できません。通信状態、または作業IDの存在を確認してください。'); } else { setJudge('locked','他の作業者が作業中',`${state.lock.worker_id ?? '-'} ${state.lock.started_at ?? ''}`); } playSound('warning'); focusScanInput(); return; }
     const raw = $('scanCodeInput').value.trim(); if (!raw) { focusScanInput(); return; }
     $('scanCodeInput').value = '';
     const qty = state.qtyMode.enabled ? Number($('scanQtyInput').value) : 1;
@@ -116,6 +116,10 @@
   async function init() {
     const workId = getWorkIdFromUrl();
     try {
+      if (!window.db) {
+        lockByLoadError('Firebase未接続です。設定と通信状態を確認してください。');
+        return;
+      }
       if (workId && typeof window.loadInspectionState === 'function') {
         const loadedState = await window.loadInspectionState(workId);
         if (!loadedState) {
@@ -126,6 +130,12 @@
           return;
         }
         Object.assign(state, loadedState);
+        if (!Array.isArray(state.details) || state.details.length === 0) {
+          state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+          setJudge('locked', '明細データなし', 'この作業には検品対象明細がありません。取込データを確認してください。');
+          render();
+          return;
+        }
         applyCurrentUserToState();
 
         if (!state.work.completed_flag && state.work.status !== 'completed' && typeof window.acquireWorkLock === 'function') {
