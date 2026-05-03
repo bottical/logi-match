@@ -1,0 +1,124 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function memberPath(tenantId) {
+      return /databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid);
+    }
+
+    function isTenantMember(tenantId) {
+      return signedIn()
+        && exists(memberPath(tenantId))
+        && get(memberPath(tenantId)).data.active == true;
+    }
+
+    function role(tenantId) {
+      return get(memberPath(tenantId)).data.role;
+    }
+
+    function isAdmin(tenantId) {
+      return isTenantMember(tenantId)
+        && role(tenantId) in ['owner', 'admin'];
+    }
+
+    function isOperatorOrAbove(tenantId) {
+      return isTenantMember(tenantId)
+        && role(tenantId) in ['owner', 'admin', 'operator'];
+    }
+
+    function isDefaultTenant(tenantId) {
+      return tenantId == 'defaultTenant';
+    }
+
+    function isAllowedBootstrapUser() {
+      return signedIn();
+    }
+
+    match /userTenants/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+
+      allow create: if isAllowedBootstrapUser()
+        && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/userTenants/$(uid))
+        && request.resource.data.tenantId == 'defaultTenant'
+        && request.resource.data.role == 'owner'
+        && request.resource.data.active == true;
+
+      allow update, delete: if false;
+    }
+
+    match /tenants/{tenantId} {
+      allow read: if isTenantMember(tenantId)
+        || (isAllowedBootstrapUser() && isDefaultTenant(tenantId));
+
+      allow create: if isAllowedBootstrapUser()
+        && isDefaultTenant(tenantId)
+        && request.resource.data.status == 'active'
+        && request.resource.data.bootstrap == true
+        && request.resource.data.bootstrapByUid == request.auth.uid;
+
+      allow update: if isAdmin(tenantId);
+      allow delete: if false;
+
+      match /members/{uid} {
+        allow read: if isTenantMember(tenantId);
+
+        allow create: if isAllowedBootstrapUser()
+          && isDefaultTenant(tenantId)
+          && request.auth.uid == uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.role == 'owner'
+          && request.resource.data.active == true
+          && request.resource.data.bootstrap == true;
+
+        allow update, delete: if isAdmin(tenantId);
+      }
+
+      match /workers/{workerId} {
+        allow read: if isTenantMember(tenantId)
+          || (
+            isAllowedBootstrapUser()
+            && isDefaultTenant(tenantId)
+            && workerId == 'default-worker'
+          );
+
+        allow create: if isAllowedBootstrapUser()
+          && isDefaultTenant(tenantId)
+          && workerId == 'default-worker'
+          && request.resource.data.active == true
+          && request.resource.data.bootstrap == true;
+
+        allow update, delete: if isAdmin(tenantId);
+      }
+
+      match /importBatches/{batchId} {
+        allow read: if isTenantMember(tenantId);
+        allow create, update, delete: if isAdmin(tenantId);
+      }
+
+      match /inspectionWorks/{workId} {
+        allow read: if isTenantMember(tenantId);
+        allow create: if isAdmin(tenantId);
+        allow update: if isOperatorOrAbove(tenantId);
+        allow delete: if isAdmin(tenantId);
+
+        match /scanLogs/{logId} {
+          allow read: if isTenantMember(tenantId);
+          allow create: if isOperatorOrAbove(tenantId);
+          allow update, delete: if false;
+        }
+
+        match /operationLogs/{logId} {
+          allow read: if isTenantMember(tenantId);
+          allow create: if isOperatorOrAbove(tenantId);
+          allow update, delete: if false;
+        }
+      }
+    }
+  }
+}
