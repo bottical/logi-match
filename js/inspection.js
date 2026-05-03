@@ -8,8 +8,24 @@
   function playSound(kind){ try { if (window.AudioManager?.play) window.AudioManager.play(kind); } catch (_) {} }
   function sortedDetails(){ return [...state.details].sort((a,b)=> rank(a)-rank(b) || a.product_name.localeCompare(b.product_name,'ja')); }
   function rank(d){ if (!d.completed_flag && d.actual_qty>0) return 0; if (d.actual_qty===0) return 1; if (d.completed_flag) return 2; return 3; }
+  function getWorkIdFromUrl() { return new URLSearchParams(window.location.search).get('work_id'); }
+  function getCurrentUserId() { const user = window.auth?.currentUser; return user?.email || user?.uid || 'unknown-user'; }
+  function applyCurrentUserToState() {
+    const userId = getCurrentUserId();
+    if (!state.work.current_worker_id || state.work.status === 'unstarted' || state.work.status === 'suspended') {
+      state.work.current_worker_id = userId;
+    }
+    const userNode = $('headerUserName');
+    if (userNode) userNode.textContent = userId;
+  }
 
   function setJudge(type, main, sub=''){ const panel=$('judgePanel'); panel.className = `inspection-judge inspection-judge--${type}`; $('mainMsgTxt').textContent = main; $('judgeSubText').textContent = sub; panel.classList.remove('inspection-flash'); void panel.offsetWidth; panel.classList.add('inspection-flash'); }
+  function lockByLoadError(message = '作業データを取得できません。通信状態を確認してください') {
+    state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+    state.syncStatus = 'failed';
+    setJudge('locked', '読込失敗', message);
+    render();
+  }
   function renderHeader(){
     $('workId').textContent = state.work.work_id ?? '-'; $('recipientName').textContent = state.work.recipient_name ?? '-';
     $('workStatus').textContent = statusMap[state.work.status] ?? state.work.status;
@@ -19,7 +35,6 @@
     $('skuProgress').textContent = `${skuDone} / ${state.details.length}`; $('qtyProgress').textContent = `${totalActual} / ${totalTarget}`;
     const [label,klass]=syncMap[state.syncStatus]; $('syncStatus').textContent=label; $('syncStatus').className=`inspection-status-badge inspection-status-badge--${klass}`;
     $('scanCodeInput').disabled = state.lock.locked;
-    $('completeButton').disabled = true;
   }
   function renderDetail(){ const host=$('detailPanel'); const d = state.recentScan?.detail;
     if (!d) { host.textContent = '直近スキャン商品はありません。'; return; }
@@ -58,7 +73,14 @@
 
   function resetQtyMode(){ state.qtyMode.enabled=false; $('qtyModeToggle').checked=false; $('scanQtyInput').disabled=true; $('scanQtyInput').value='1'; }
 
-  function runScan(){ if (state.lock.locked){ if (state.lock.reason === 'sync-error') { setJudge('locked','同期失敗により停止中','直前の読取結果は画面上に反映済みです。再読取せず管理者へ確認してください'); } else { setJudge('locked','他の作業者が作業中',`${state.lock.worker_id ?? '-'} ${state.lock.started_at ?? ''}`); } playSound('warning'); focusScanInput(); return; }
+  function runScan(){
+    if (state.work.status === 'completed' || state.work.completed_flag) {
+      setJudge('locked', '完了済み', 'この作業はすでに完了しています');
+      playSound('warning');
+      focusScanInput();
+      return;
+    }
+    if (state.lock.locked){ if (state.lock.reason === 'sync-error') { setJudge('locked','同期失敗により停止中','直前の読取結果は画面上に反映済みです。再読取せず管理者へ確認してください'); } else if (state.lock.reason === 'load-error') { setJudge('locked', '読込失敗', '作業データを取得できません。通信状態を確認してください'); } else { setJudge('locked','他の作業者が作業中',`${state.lock.worker_id ?? '-'} ${state.lock.started_at ?? ''}`); } playSound('warning'); focusScanInput(); return; }
     const raw = $('scanCodeInput').value.trim(); if (!raw) { focusScanInput(); return; }
     $('scanCodeInput').value = '';
     const qty = state.qtyMode.enabled ? Number($('scanQtyInput').value) : 1;
@@ -69,8 +91,9 @@
     detail.actual_qty += qty; detail.completed_flag = detail.actual_qty === detail.target_qty;
     state.recentScan = { scanCode: raw, detail, isAlt: detail.main_barcode!==raw, at: Date.now() };
     state.work.status = 'current';
+    state.work.current_worker_id = getCurrentUserId();
     const allDone = state.details.every(d=>d.completed_flag);
-    if (allDone){ state.work.completed_flag = true; state.work.status = 'completed'; setJudge('ok','作業完了','全明細が完了しました'); playSound('strong-complete'); }
+    if (allDone){ state.work.status = 'completed'; state.work.completed_flag = true; state.work.completed_at = new Date().toISOString(); state.work.current_worker_id = null; setJudge('ok','作業完了','全明細が完了しました'); playSound('strong-complete'); }
     else if (detail.completed_flag){ setJudge('complete','明細完了',detail.product_name); playSound('complete'); }
     else { setJudge('ok','OK',detail.product_name); playSound('ok'); }
     resetQtyMode(); render(); persistAsync('scan', { scanCode: raw, detailId: detail.detail_id, qtyDelta: qty }); focusScanInput(); }
@@ -87,9 +110,55 @@
   $('scanSubmitButton').addEventListener('click', runScan);
   $('scanCodeInput').addEventListener('keydown',(e)=>{ if (e.key==='Enter'){ e.preventDefault(); runScan(); }});
   $('qtyModeToggle').addEventListener('change',(e)=>{ state.qtyMode.enabled=e.target.checked; $('scanQtyInput').disabled=!state.qtyMode.enabled; if (state.qtyMode.enabled) $('scanQtyInput').focus(); else focusScanInput(); });
-  $('pauseButton').addEventListener('click',()=>confirmAction('この作業を中断します。よろしいですか？',()=>{ state.work.status='suspended'; state.lock={locked:false,reason:null,worker_id:null,started_at:null}; setJudge('warning','中断','作業を中断しました'); render(); persistAsync('suspend'); }));
-  $('resetButton').addEventListener('click',()=>confirmAction('この作業の検品実績をすべて0に戻します。\nこの操作は現場作業に影響します。実行してよろしいですか？',()=>{ state.details.forEach(d=>{d.actual_qty=0; d.completed_flag=false;}); state.work.status='unstarted'; state.work.completed_flag=false; state.recentScan=null; setJudge('warning','リセット完了','実績を初期化しました'); render(); persistAsync('reset'); }));
-  $('completeButton').addEventListener('click',()=>confirmAction('検品を完了します。よろしいですか？',()=>{ if (!state.details.every(d=>d.completed_flag)) return; state.work.status='completed'; state.work.completed_flag=true; setJudge('ok','作業完了','完了処理を実行しました'); playSound('strong-complete'); render(); persistAsync('complete'); }));
+  $('pauseButton').addEventListener('click',()=>confirmAction('この作業を中断します。よろしいですか？',()=>{ state.work.status='suspended'; state.work.suspended_at = new Date().toISOString(); state.work.current_worker_id = null; state.lock={locked:false,reason:null,worker_id:null,started_at:null}; setJudge('warning','中断','作業を中断しました'); render(); persistAsync('suspend'); }));
+  $('resetButton').addEventListener('click',()=>confirmAction('この作業の検品実績をすべて0に戻します。\nこの操作は現場作業に影響します。実行してよろしいですか？',()=>{ state.details.forEach(d=>{d.actual_qty=0; d.completed_flag=false;}); state.work.status='unstarted'; state.work.completed_flag=false; state.work.current_worker_id=null; state.recentScan=null; setJudge('warning','リセット完了','実績を初期化しました'); render(); persistAsync('reset'); }));
 
-  render(); focusScanInput();
+  async function init() {
+    const workId = getWorkIdFromUrl();
+    try {
+      if (workId && typeof window.loadInspectionState === 'function') {
+        const loadedState = await window.loadInspectionState(workId);
+        if (!loadedState) {
+          state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+          state.syncStatus = 'failed';
+          setJudge('locked', '作業データなし', '指定された作業IDが見つかりません');
+          render();
+          return;
+        }
+        Object.assign(state, loadedState);
+        applyCurrentUserToState();
+
+        if (!state.work.completed_flag && state.work.status !== 'completed' && typeof window.acquireWorkLock === 'function') {
+          const lockResult = await window.acquireWorkLock(workId, getCurrentUserId());
+          if (lockResult.ok) {
+            state.work.status = 'current';
+            state.work.current_worker_id = getCurrentUserId();
+            state.lock = { locked: false, reason: null, worker_id: null, started_at: null };
+          } else if (lockResult.reason === 'locked') {
+            state.lock = { locked: true, reason: 'work-locked', worker_id: lockResult.workerId || null, started_at: lockResult.startedAt || null };
+            setJudge('locked', '他の作業者が作業中', `${lockResult.workerId || '-'} が作業中です`);
+          } else if (lockResult.reason === 'completed') {
+            state.work.status = 'completed';
+            state.work.completed_flag = true;
+            state.lock = { locked: true, reason: 'completed', worker_id: null, started_at: null };
+            setJudge('locked', '完了済み', 'この作業はすでに完了しています');
+          } else if (lockResult.reason === 'not-found') {
+            state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+            setJudge('locked', '作業データなし', '指定された作業IDが見つかりません');
+          }
+        }
+      } else {
+        state.syncStatus = 'offline';
+        state.lock = { locked: true, reason: 'load-error', worker_id: null, started_at: new Date().toISOString() };
+        setJudge('locked', '作業ID未指定', 'URLに work_id が指定されていないため、検品を開始できません');
+      }
+      render();
+      focusScanInput();
+    } catch (error) {
+      console.error('[inspection] init failed', error);
+      lockByLoadError();
+    }
+  }
+
+  init();
 })();

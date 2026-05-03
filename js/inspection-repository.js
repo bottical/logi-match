@@ -72,11 +72,108 @@
     await batch.commit();
   };
 
-  // TODO(next phase): read work_id from inspection.html?work_id=... and load matching work.
-  // TODO(next phase): fetch header and detail data from inspectionWorks/{work_id}.
-  // TODO(next phase): migrate detail storage to subcollection details/{detail_id}.
+
+
+  window.acquireWorkLock = async function acquireWorkLock(workId, workerId) {
+    if (!window.db || !window.firebase?.firestore) {
+      throw new Error('Firestore is not initialized.');
+    }
+    if (!workId) {
+      throw new Error('work_id is missing.');
+    }
+    if (!workerId) {
+      throw new Error('workerId is missing.');
+    }
+
+    const workRef = window.db.collection('inspectionWorks').doc(workId);
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+
+    return window.db.runTransaction(async (tx) => {
+      const snap = await tx.get(workRef);
+      if (!snap.exists) {
+        return { ok: false, reason: 'not-found' };
+      }
+
+      const data = snap.data() || {};
+      const work = data.work || {};
+      const status = work.status || 'unstarted';
+      const currentWorkerId = work.current_worker_id || null;
+
+      if (status === 'completed') {
+        return { ok: false, reason: 'completed' };
+      }
+
+      if (status === 'current' && currentWorkerId && currentWorkerId !== workerId) {
+        return {
+          ok: false,
+          reason: 'locked',
+          workerId: currentWorkerId,
+          startedAt: work.current_started_at || null
+        };
+      }
+
+      if (status === 'current' && currentWorkerId === workerId) {
+        return { ok: true, reason: 'same-worker' };
+      }
+
+      if (status === 'unstarted' || status === 'suspended') {
+        tx.set(workRef, {
+          work: {
+            ...work,
+            status: 'current',
+            current_worker_id: workerId,
+            current_started_at: now,
+            updated_at: now
+          },
+          updated_at: now
+        }, { merge: true });
+        return { ok: true, reason: 'acquired' };
+      }
+
+      return { ok: false, reason: 'locked', workerId: currentWorkerId, startedAt: work.current_started_at || null };
+    });
+  };
+
+  // TODO: inspectionWorks/{work_id}/details/{detail_id} から明細を取得する構造へ移行する
+  // TODO: implement acquireWorkLock(workId, workerId) with Firestore transaction.
+  // It should atomically set work.status=current/current_worker_id when unstarted or suspended.
+  // It should reject when another worker is already current.
   window.loadInspectionState = async function loadInspectionState(workId) {
-    console.info('[inspection] loadInspectionState TODO', workId);
-    return null;
+    if (!window.db) {
+      throw new Error('Firestore is not initialized.');
+    }
+
+    if (!workId) {
+      throw new Error('work_id is missing.');
+    }
+
+    const doc = await window.db.collection('inspectionWorks').doc(workId).get();
+
+    if (!doc.exists) {
+      return null;
+    }
+
+    const data = doc.data();
+    const details = Array.isArray(data.details) ? data.details : [];
+    const recentScan = data.recentScan ? { ...data.recentScan } : null;
+
+    if (recentScan?.detail_id) {
+      recentScan.detail = details.find((d) => d.detail_id === recentScan.detail_id) || null;
+    }
+
+    return {
+      work: data.work || {
+        work_id: workId,
+        recipient_name: '',
+        status: 'unstarted',
+        current_worker_id: null,
+        completed_flag: false
+      },
+      details,
+      recentScan,
+      syncStatus: 'saved',
+      lock: { locked: false, reason: null, worker_id: null, started_at: null },
+      qtyMode: { enabled: false, qty: 1 }
+    };
   };
 })();
