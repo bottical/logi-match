@@ -1,6 +1,6 @@
 (function(){
   const $=id=>document.getElementById(id);
-  if (!$('importButton')) return;
+  if (!$('importButton')) return; $('importButton').disabled=true; (async()=>{try{await window.initializeAppContext('master-import');window.renderSidebar?.();$('importButton').disabled=false;}catch(e){console.error('[master-import] init failed',e);$('importStatus').textContent='初期化に失敗しました。';}})();
   const db=()=>window.db;
   const requiredBase=['work_id','product_id','product_name','target_qty','recipient_name'];
   const nowIso=()=>new Date().toISOString();
@@ -13,7 +13,7 @@
   function renderMessages(id, rows){ const ul=$(id); ul.replaceChildren(); rows.forEach(r=>{const li=document.createElement('li'); li.textContent=r; ul.appendChild(li);}); }
 
   async function runImport(){
-    if (!db()) return alert('Firebase未接続');
+    if (!db()) return alert('Firebase未接続'); if(!window.appContext?.tenantId) return alert('テナント情報の取得が完了していません。再読み込みしてください。');
     const file=$('csvFile').files[0]; if(!file) return;
     $('importStatus').textContent='取込中...'; $('importResult').textContent=''; renderMessages('importErrors',[]); renderMessages('importWarnings',[]);
     const warnings=[]; const errors=[];
@@ -36,7 +36,7 @@
       let batch=db().batch(), writes=0, successWorks=0, successDetails=0;
       const commitBatchIfNeeded = async (force=false) => { if (writes>=BATCH_LIMIT || (force && writes>0)) { await batch.commit(); batch=db().batch(); writes=0; } };
       for (const [workId,items] of Object.entries(grouped)) {
-        const ref=db().collection('inspectionWorks').doc(workId); const snap=await ref.get();
+        const ref=db().collection('tenants').doc(window.appContext.tenantId).collection('inspectionWorks').doc(workId); const snap=await ref.get();
         if (snap.exists && snap.data()?.deleted_flag!==true && snap.data()?.work?.deleted_flag!==true) { warnings.push(`作業ID ${workId} は既に存在するため取り込みませんでした。再取込する場合は管理者が既存作業を削除してください。`); continue; }
         const dmap=new Map();
         items.forEach(it=>{ const key=it.scan_code; if(!dmap.has(key)) dmap.set(key,{detail_id:`${safe(workId)}_${String(dmap.size+1).padStart(3,'0')}`,work_id:workId,scan_code:key,main_barcode:it.main_barcode||'',alt_code:it.alt_code||'',product_id:it.product_id,product_name:it.product_name,target_qty:0,actual_qty:0,completed_flag:false,display_order_base:dmap.size+1,source_rows:[],created_at:nowIso(),updated_at:nowIso()}); const d=dmap.get(key); d.target_qty+=it.target_qty; d.source_rows.push(it.row_number); if(d.product_id!==it.product_id||d.product_name!==it.product_name) warnings.push(`作業ID ${workId} / コード ${key} で商品情報不一致`); });
@@ -46,7 +46,7 @@
       }
       $('importStatus').textContent='Firestore保存中...'; await commitBatchIfNeeded(true);
       const totalWorks=Object.keys(grouped).length; const batchStatus = successWorks===0 ? 'failed' : ((errors.length||warnings.length||successWorks<totalWorks)?'partial_success':'success');
-      await db().collection('inspectionImportBatches').doc(batchId).set({batch_id:batchId,imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),imported_by:window.auth?.currentUser?.email||'unknown-user',source_file_name:file.name,encoding,status:batchStatus,success_work_count:successWorks,success_detail_count:successDetails,source_row_count:rows.length-1,error_count:errors.length,warning_count:warnings.length,errors,warnings});
+      await db().collection('tenants').doc(window.appContext.tenantId).collection('importBatches').doc(batchId).set({batch_id:batchId,imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),imported_by:window.auth?.currentUser?.email||'unknown-user',source_file_name:file.name,encoding,status:batchStatus,success_work_count:successWorks,success_detail_count:successDetails,source_row_count:rows.length-1,error_count:errors.length,warning_count:warnings.length,errors,warnings});
       $('importStatus').textContent=successWorks===0?'取込失敗':'取込完了'; $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} エラー:${errors.length} 警告:${warnings.length}`;
       renderMessages('importErrors', errors.map(e=>`行${e.row}: ${e.reason} (${e.summary})`)); renderMessages('importWarnings', warnings);
     } catch (e) {

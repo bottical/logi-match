@@ -3,6 +3,16 @@
     return state?.work?.work_id;
   }
 
+  function requireTenantId() {
+    const tenantId = window.appContext?.tenantId;
+    if (!tenantId) throw new Error('TENANT_ID_MISSING');
+    return tenantId;
+  }
+
+  function inspectionWorkRef(workId) {
+    return window.db.collection('tenants').doc(requireTenantId()).collection('inspectionWorks').doc(workId);
+  }
+
   function getCurrentUserId() {
     const user = window.auth?.currentUser;
     return user?.email || user?.uid || 'unknown-user';
@@ -19,7 +29,7 @@
     }
 
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
-    const workRef = window.db.collection('inspectionWorks').doc(workId);
+    const workRef = inspectionWorkRef(workId);
     const existing = await workRef.get();
     const existingData = existing.exists ? (existing.data() || {}) : {};
     const resolvedImportDate = state.work.import_date || existingData.import_date || existingData.work?.import_date || null;
@@ -94,18 +104,18 @@
 
 
 
-  window.acquireWorkLock = async function acquireWorkLock(workId, workerId) {
+  window.acquireWorkLock = async function acquireWorkLock(workId, worker) {
     if (!window.db || !window.firebase?.firestore) {
       throw new Error('Firestore is not initialized.');
     }
     if (!workId) {
       throw new Error('work_id is missing.');
     }
-    if (!workerId) {
+    if (!worker?.workerId) {
       throw new Error('workerId is missing.');
     }
 
-    const workRef = window.db.collection('inspectionWorks').doc(workId);
+    const workRef = inspectionWorkRef(workId);
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
 
     return window.db.runTransaction(async (tx) => {
@@ -123,7 +133,7 @@
         return { ok: false, reason: 'completed' };
       }
 
-      if (status === 'current' && currentWorkerId && currentWorkerId !== workerId) {
+      if (status === 'current' && currentWorkerId && currentWorkerId !== worker.workerId) {
         return {
           ok: false,
           reason: 'locked',
@@ -132,7 +142,18 @@
         };
       }
 
-      if (status === 'current' && currentWorkerId === workerId) {
+      if (status === 'current' && currentWorkerId === worker.workerId) {
+        tx.set(workRef,{
+          work:{
+            ...work,
+            current_worker_id: worker.workerId,
+            current_worker_name: work.current_worker_name || worker.workerName || null,
+            current_login_uid: work.current_login_uid || worker.loginUid || null,
+            current_login_email: work.current_login_email || worker.loginEmail || null,
+            updated_at: now
+          },
+          updated_at: now
+        },{merge:true});
         return { ok: true, reason: 'same-worker' };
       }
 
@@ -144,7 +165,11 @@
           work: {
             ...work,
             status: 'current',
-            current_worker_id: workerId,
+            current_worker_id: worker.workerId,
+            current_worker_name: worker.workerName || null,
+            current_login_uid: worker.loginUid || null,
+            current_login_email: worker.loginEmail || null,
+            started_at: work.started_at || now,
             current_started_at: now,
             updated_at: now
           },
@@ -166,7 +191,7 @@
       throw new Error('work_id is missing.');
     }
 
-    const doc = await window.db.collection('inspectionWorks').doc(workId).get();
+    const doc = await inspectionWorkRef(workId).get();
 
     if (!doc.exists) {
       return null;
@@ -194,5 +219,14 @@
       lock: { locked: false, reason: null, worker_id: null, started_at: null },
       qtyMode: { enabled: false, qty: 1 }
     };
+  };
+
+  // scanLogs are treated as scan event logs in the initial release.
+  // They do not strictly guarantee state update persistence in the same atomic transaction.
+  window.appendScanLog = async function appendScanLog(workId, log) {
+    if (!window.db || !window.firebase?.firestore) throw new Error('Firestore is not initialized.');
+    if (!workId) throw new Error('work_id is missing.');
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    await inspectionWorkRef(workId).collection('scanLogs').add({ ...log, scannedAt: now });
   };
 })();
