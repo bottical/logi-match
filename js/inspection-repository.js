@@ -19,12 +19,22 @@
     }
 
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const workRef = window.db.collection('inspectionWorks').doc(workId);
+    const existing = await workRef.get();
+    const existingData = existing.exists ? (existing.data() || {}) : {};
+    const resolvedImportDate = state.work.import_date || existingData.import_date || existingData.work?.import_date || null;
+    const resolvedImportDateKey = state.work.import_date_key || existingData.import_date_key || existingData.work?.import_date_key || null;
 
     // NOTE: details full-array save is a temporary structure for validation.
     // TODO: migrate to details subcollection for production scalability.
     // inspectionWorks/{work_id}/details/{detail_id}
     const payload = {
-      work: { ...state.work, updated_at: now },
+      work_id: workId,
+      status: state.work.status || 'unstarted',
+      deleted_flag: !!state.work.deleted_flag,
+      ...(resolvedImportDate ? { import_date: resolvedImportDate } : {}),
+      ...(resolvedImportDateKey ? { import_date_key: resolvedImportDateKey } : {}),
+      work: { ...state.work, import_date: resolvedImportDate, import_date_key: resolvedImportDateKey, updated_at: now },
       details: state.details,
       recentScan: state.recentScan ? {
         scanCode: state.recentScan.scanCode,
@@ -41,7 +51,6 @@
       updated_at: now
     };
 
-    const workRef = window.db.collection('inspectionWorks').doc(workId);
     const batch = window.db.batch();
     batch.set(workRef, payload, { merge: true });
 
@@ -54,6 +63,17 @@
         qty_delta: meta.payload?.qtyDelta || 1,
         result: 'accepted',
         worker_id: getCurrentUserId(),
+        created_at: now
+      });
+    }
+
+    if (meta.reason === 'scan' && state.work.completed_flag) {
+      const opRef = workRef.collection('operationLogs').doc();
+      batch.set(opRef, {
+        work_id: workId,
+        op_type: 'complete',
+        worker_id: getCurrentUserId(),
+        payload: { trigger: 'scan-complete', detail_id: meta.payload?.detailId || null },
         created_at: now
       });
     }
@@ -118,6 +138,9 @@
 
       if (status === 'unstarted' || status === 'suspended') {
         tx.set(workRef, {
+          work_id: workId,
+          status: 'current',
+          deleted_flag: !!work.deleted_flag,
           work: {
             ...work,
             status: 'current',

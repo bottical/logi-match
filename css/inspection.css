@@ -46,3 +46,6 @@
 .inspection-flash{animation:flash 0.1s linear 1;}
 @keyframes flash{from{filter:brightness(1.2);}to{filter:brightness(1);}}
 @media (max-width: 900px){ .inspection-page .main-sidebar{position:static;width:auto;} .inspection-page .content-wrapper{margin-left:0;} .inspection-main-panels{grid-template-columns:1fr;} #scanCodeInput{font-size:22px;} .inspection-judge #mainMsgTxt{font-size:40px;} }
+.portal{max-width:1200px;margin:0 auto;padding:16px;display:grid;gap:12px}.panel{background:#fff;border:1px solid #dee2e6;padding:12px}.filters{display:flex;flex-wrap:wrap;gap:8px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #dee2e6;padding:6px 8px;white-space:nowrap}.error-list{color:#b91c1c}.btn-link{display:inline-block;padding:6px 10px;background:#2563eb;color:#fff;text-decoration:none}
+
+.warning-list{color:#c2410c}
