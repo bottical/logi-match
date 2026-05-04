@@ -79,3 +79,21 @@
 .inspection-progress-card{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;background:#f8fafc;border:1px solid #d8dde3;padding:10px}
 .inspection-judge{min-height:140px}.inspection-judge #mainMsgTxt{font-size:36px}
 @media (max-width: 900px){.inspection-input-bar{grid-template-columns:1fr}.inspection-progress-card{grid-template-columns:1fr 1fr}}
+
+html.shell-embedded-root .main-sidebar,
+html.shell-embedded-root .main-header,
+html.shell-embedded-root #sidebarHost,
+html.shell-embedded-root #sidebarToggle,
+html.shell-embedded-root .brand-link {
+  display: none !important;
+}
+
+html.shell-embedded-root .content-wrapper,
+html.shell-embedded-root .main-content,
+html.shell-embedded-root .app-main,
+html.shell-embedded-root .wrapper {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+html.shell-embedded-root body { background: #fff; }
