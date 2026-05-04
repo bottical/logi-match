@@ -50,10 +50,38 @@ async function runScan(){ if(!selectedWorker()){setJudge('warning','作業者を
  playSound(detail.completed_flag?'complete':'ok');render();$('scanQtyInput').value='1';persistAsync('scan',{scanCode:raw,detailId:detail.detail_id,qtyDelta:qty});focusJanInput();}
 async function init(){resetToPickingNoInput();$('headerUserName')?.remove();
  const workerSelect=$('workerSelect');const workers=await window.loadWorkers(window.appContext.tenantId);
+ if(window.setWorkerList)window.setWorkerList(workers);
  workers.forEach(w=>{const o=document.createElement('option');o.value=w.workerId;o.textContent=`${w.workerCode||''} ${w.workerName||w.workerId}`;workerSelect.appendChild(o);});
- const restored=window.restoreSelectedWorker(window.appContext.tenantId); if(restored){ workerSelect.value=restored.workerId; }
- workerSelect.addEventListener('change',()=>{window.selectWorker(window.appContext.tenantId,workerSelect.value);$('workerDisplayName').textContent=selectedWorker()?.workerName||'未選択';workerSelect.hidden=true;});
+ const restored=window.restoreSelectedWorker?.(window.appContext.tenantId);
+ if(restored?.workerId){
+  workerSelect.value=restored.workerId;
+  $('workerDisplayName').textContent=restored.workerName||restored.workerId;
+  setJudge('idle','ピッキングNo.待ち','次のピッキングNo.をスキャンしてください');
+  render();
+  focusPickingNoInput();
+ }else{
+  $('workerDisplayName').textContent='未選択';
+  setJudge('warning','作業者を選択してください','作業者を選択してください');
+  render();
+ }
+ workerSelect.addEventListener('change',()=>{
+  const worker=window.selectWorker(window.appContext.tenantId,workerSelect.value);
+  $('workerDisplayName').textContent=worker?.workerName||worker?.workerId||'未選択';
+  workerSelect.hidden=true;
+  if(!state.work.work_id){
+   if(worker){
+    setJudge('idle','ピッキングNo.待ち','次のピッキングNo.をスキャンしてください');
+    render();
+    focusPickingNoInput();
+   }else{
+    setJudge('warning','作業者を選択してください','作業者を選択してください');
+    render();
+   }
+  }
+ });
  $('workerChangeButton').addEventListener('click',()=>{workerSelect.hidden=!workerSelect.hidden;if(!workerSelect.hidden)workerSelect.focus();});
+ const id=new URLSearchParams(location.search).get('work_id');
+ if(id){$('pickingNoInput').value=id;await loadPickingNo(id);}
 }
 $('loadPickingButton').addEventListener('click',()=>loadPickingNo($('pickingNoInput').value));$('pickingNoInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();loadPickingNo($('pickingNoInput').value);}});$('scanCodeInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();runScan();}});$('scanSubmitButton').addEventListener('click',runScan);
 $('pauseButton').addEventListener('click',()=>confirmAction('この作業を中断します。よろしいですか？',async()=>{state.work.status='suspended';state.work.suspended_at=new Date().toISOString();state.work.current_worker_id=null;state.work.current_worker_name=null;state.work.current_login_uid=null;state.work.current_login_email=null;const ok=await persistAsync('suspend');if(ok)resetToPickingNoInput();}));
