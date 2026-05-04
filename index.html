@@ -1,1 +1,26 @@
-<!doctype html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ロジマッチ</title><script>location.replace('inspection.html');</script></head><body></body></html>
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ロジマッチ</title>
+    <link rel="stylesheet" href="./css/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside id="appSidebar" class="app-sidebar"></aside>
+      <main id="appContent" class="app-content" aria-live="polite"></main>
+    </div>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+    <script src="./js/firebase-config.js"></script>
+    <script src="./js/auth.js"></script>
+    <script src="./js/auth-guard.js"></script>
+    <script src="./js/tenant-context.js"></script>
+    <script src="./js/bootstrap-tenant.js"></script>
+    <script src="./js/app-init.js"></script>
+    <script type="module" src="./js/sidebar-shell.js"></script>
+    <script type="module" src="./js/router.js"></script>
+  </body>
+</html>
