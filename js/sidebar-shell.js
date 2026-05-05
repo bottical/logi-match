@@ -10,7 +10,14 @@ export const MENU_ITEMS = [
 let initialized = false;
 
 export function getCurrentPageId() {
-  return window.location.hash.replace('#', '') || 'inspection';
+  const rawHash = window.location.hash.replace('#', '') || 'inspection';
+  return rawHash.split('?')[0] || 'inspection';
+}
+
+export function getCurrentHashParams() {
+  const rawHash = window.location.hash.replace('#', '');
+  const queryString = rawHash.includes('?') ? rawHash.split('?').slice(1).join('?') : '';
+  return new URLSearchParams(queryString);
 }
 
 export function updateSidebarActive(pageId) {
@@ -25,6 +32,27 @@ function getVisibleItems() {
     return MENU_ITEMS.filter((item) => item.roles.includes('operator'));
   }
   return MENU_ITEMS.filter((item) => item.roles.includes(role));
+}
+
+
+export function bindSidebarNavigation() {
+  const sidebar = document.getElementById('appSidebar');
+  if (!sidebar) return;
+
+  sidebar.addEventListener('click', (event) => {
+    const link = event.target.closest('.sidebar-link[data-page]');
+    if (!link) return;
+
+    event.preventDefault();
+
+    const pageId = link.dataset.page;
+    if (!pageId) return;
+
+    const nextHash = `#${pageId}`;
+    if (window.location.hash === nextHash) return;
+
+    window.location.hash = nextHash;
+  });
 }
 
 export function initSidebar() {
