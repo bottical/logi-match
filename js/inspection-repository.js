@@ -9,8 +9,19 @@
     return tenantId;
   }
 
+  // NOTE: Spec uses /clients/{clientId}. This codebase standardizes the same tenant boundary under /tenants/{tenantId}.
+  function tenantRef() { return window.db.collection('tenants').doc(requireTenantId()); }
+
   function inspectionWorkRef(workId) {
-    return window.db.collection('tenants').doc(requireTenantId()).collection('inspectionWorks').doc(workId);
+    return tenantRef().collection('inspectionWorks').doc(workId);
+  }
+
+  function scanLogsRef() {
+    return tenantRef().collection('scanLogs');
+  }
+
+  function operationLogsRef() {
+    return tenantRef().collection('operationLogs');
   }
 
   function getCurrentUserId() {
@@ -64,38 +75,20 @@
     const batch = window.db.batch();
     batch.set(workRef, payload, { merge: true });
 
-    if (meta.reason === 'scan') {
-      const logRef = workRef.collection('scanLogs').doc();
-      batch.set(logRef, {
-        work_id: workId,
-        detail_id: meta.payload?.detailId || null,
-        scanned_code: meta.payload?.scanCode || null,
-        qty_delta: meta.payload?.qtyDelta || 1,
-        result: 'accepted',
-        worker_id: getCurrentUserId(),
-        created_at: now
-      });
-    }
-
-    if (meta.reason === 'scan' && state.work.completed_flag) {
-      const opRef = workRef.collection('operationLogs').doc();
-      batch.set(opRef, {
-        work_id: workId,
-        op_type: 'complete',
-        worker_id: getCurrentUserId(),
-        payload: { trigger: 'scan-complete', detail_id: meta.payload?.detailId || null },
-        created_at: now
-      });
-    }
-
     if (['suspend', 'reset', 'complete'].includes(meta.reason)) {
-      const opRef = workRef.collection('operationLogs').doc();
+      const opRef = operationLogsRef().doc();
       batch.set(opRef, {
-        work_id: workId,
-        op_type: meta.reason,
-        worker_id: getCurrentUserId(),
-        payload: meta.payload || {},
-        created_at: now
+        logId: opRef.id,
+        clientId: requireTenantId(),
+        operationType: meta.reason,
+        targetType: 'inspectionWork',
+        targetId: workId,
+        workerId: getCurrentUserId(),
+        workerNameSnapshot: null,
+        userId: getCurrentUserId(),
+        deviceId: window.appContext?.deviceId || 'web',
+        detail: meta.payload || {},
+        operatedAt: now
       });
     }
 
@@ -182,6 +175,51 @@
     });
   };
 
+
+  window.applyScanTransaction = async function applyScanTransaction(input) {
+    const { workId, scannedCode, inputQty, workerId, workerName, userId, deviceId } = input;
+    const workRef = inspectionWorkRef(workId);
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    return window.db.runTransaction(async (tx) => {
+      const snap = await tx.get(workRef);
+      if (!snap.exists) return { ok:false, message:'work not found' };
+      const data=snap.data()||{}; const work=data.work||{}; const details=Array.isArray(data.details)?data.details:[];
+      if(work.status!=='current') return {ok:false,message:'work is not current'};
+      if(work.current_worker_id && work.current_worker_id!==workerId) return {ok:false,message:'lock owner mismatch'};
+      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) return {ok:false,message:'device mismatch'};
+      const norm=(v)=>String(v||'').trim();
+      const tqty=(d)=>Number(d?.target_qty ?? d?.targetQty ?? 0);
+      const aqty=(d)=>Number(d?.actual_qty ?? d?.actualQty ?? 0);
+      const excluded=(d)=>d?.inspectionRequired===false||d?.inspection_required===false||tqty(d)===0;
+      const scanKey=(d)=>[...(Array.isArray(d.scanKeys)?d.scanKeys:[]),{type:'jan',value:d.main_barcode||d.scan_code||d.jan},{type:'alternative',value:d.alt_code||d.alternativeCode}].map(k=>({type:k.type||'unknown',value:norm(k.value)})).filter(k=>k.value);
+      const code=norm(scannedCode);
+      let idx=-1, codeType='unknown';
+      for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='jan'&&k.value===code)){idx=i;codeType='jan';break;}}
+      if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='alternative'&&k.value===code)){idx=i;codeType='alternative';break;}}}
+      if(idx<0) return {ok:false,message:'not found'};
+      const d=details[idx]; const before=aqty(d); const target=tqty(d); const after=before+Number(inputQty||0);
+      if(after>target) return {ok:false,message:'over qty'};
+      if(Object.prototype.hasOwnProperty.call(d,'actual_qty')) d.actual_qty=after; else d.actualQty=after;
+      d.completed_flag = after>=target;
+      const active=details.filter(x=>!excluded(x));
+      const completed=active.every(x=>x.completed_flag);
+      work.totalSkuCount = active.length;
+      work.targetQtyTotal = active.reduce((n,x)=>n+tqty(x),0);
+      work.actualQtyTotal = active.reduce((n,x)=>n+aqty(x),0);
+      work.excludedItemCount = details.length - active.length;
+      work.status=completed?'completed':'current';
+      work.completed_flag=completed;
+      if(completed){ work.completed_at = new Date().toISOString(); work.current_worker_id=null; work.current_worker_name=null; work.current_login_uid=null; work.current_login_email=null; work.current_device_id=null; work.lock_acquired_at=null; work.current_started_at=null; work.currentWorkerId=null; work.currentWorkerName=null; work.currentDeviceId=null; work.lockAcquiredAt=null; }
+      work.lastActivityAt=new Date().toISOString();
+      tx.set(workRef,{details,work,status:work.status,updated_at:now},{merge:true});
+      const logRef = scanLogsRef().doc();
+      const logId = logRef.id;
+      tx.set(logRef,{logId,clientId:requireTenantId(),workId,pickingNo:workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
+      if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:requireTenantId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||null},operatedAt:now}); }
+      return {ok:true,detailId:d.detail_id,state:{work,details}};
+    });
+  };
+
   window.loadInspectionState = async function loadInspectionState(workId) {
     if (!window.db) {
       throw new Error('Firestore is not initialized.');
@@ -227,6 +265,7 @@
     if (!window.db || !window.firebase?.firestore) throw new Error('Firestore is not initialized.');
     if (!workId) throw new Error('work_id is missing.');
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
-    await inspectionWorkRef(workId).collection('scanLogs').add({ ...log, scannedAt: now });
+    const ref=scanLogsRef().doc();
+    await ref.set({ logId: ref.id, clientId: requireTenantId(), workId, ...log, scannedAt: log.scannedAt || now });
   };
 })();

@@ -97,3 +97,5 @@ html.shell-embedded-root .wrapper {
 }
 
 html.shell-embedded-root body { background: #fff; }
+
+.detail-row--excluded{background:#f1f3f5;color:#7a7f87}
