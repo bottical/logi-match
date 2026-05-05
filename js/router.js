@@ -1,4 +1,4 @@
-import { initSidebar, updateSidebarActive, getCurrentPageId } from './sidebar-shell.js';
+import { initSidebar, bindSidebarNavigation, updateSidebarActive, getCurrentPageId } from './sidebar-shell.js';
 import { renderInspectionView } from './views/inspection-view.js';
 import { renderMasterImportView } from './views/master-import-view.js';
 import { renderImportHistoryView } from './views/import-history-view.js';
@@ -69,6 +69,7 @@ window.addEventListener('hashchange', renderRoute);
 document.addEventListener('DOMContentLoaded', async () => {
   await waitForAppContext();
   initSidebar();
+  bindSidebarNavigation();
   if (!window.location.hash) {
     window.location.hash = '#inspection';
     return;

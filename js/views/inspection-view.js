@@ -1,5 +1,13 @@
+import { getCurrentHashParams } from '../sidebar-shell.js';
 import { renderFrameView } from './frame-view.js';
 
 export async function renderInspectionView(container) {
-  return renderFrameView(container, './inspection.html?shell=1', '検品実行');
+  const params = getCurrentHashParams();
+  const workId = params.get('work_id');
+
+  const src = workId
+    ? `./inspection.html?shell=1&work_id=${encodeURIComponent(workId)}`
+    : './inspection.html?shell=1';
+
+  return renderFrameView(container, src, '検品実行');
 }
