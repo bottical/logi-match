@@ -31,18 +31,14 @@ service cloud.firestore {
         && role(tenantId) in ['owner', 'admin', 'operator'];
     }
 
-    function allowedBootstrapPath() {
-      return /databases/$(database)/documents/allowedBootstrapUsers/$(request.auth.uid);
+    function selfBootstrapClientId() {
+      return 'client_' + request.auth.uid;
     }
 
-    function hasPendingBootstrapUser() {
+    function isSelfBootstrapClient(clientId) {
       return signedIn()
-        && exists(allowedBootstrapPath())
-        && get(allowedBootstrapPath()).data.status == 'pending';
-    }
-
-    function pendingBootstrapClientId() {
-      return hasPendingBootstrapUser() ? get(allowedBootstrapPath()).data.clientId : null;
+        && clientId == selfBootstrapClientId()
+        && !exists(/databases/$(database)/documents/userTenants/$(request.auth.uid));
     }
 
     function clientUserPath(clientId) {
@@ -88,8 +84,8 @@ service cloud.firestore {
     match /clients/{clientId} {
       allow read: if isClientMember(clientId)
         || isSystemOwner()
-        || (hasPendingBootstrapUser() && clientId == pendingBootstrapClientId());
-      allow create: if isClientAdmin(clientId) || isSystemOwner() || (hasPendingBootstrapUser() && clientId == pendingBootstrapClientId());
+        || isSelfBootstrapClient(clientId);
+      allow create: if isClientAdmin(clientId) || isSystemOwner() || isSelfBootstrapClient(clientId);
       allow update, delete: if isClientAdmin(clientId) || isSystemOwner();
 
       match /users/{userId} {
@@ -97,11 +93,19 @@ service cloud.firestore {
           || isClientAdmin(clientId)
           || isSystemOwner()
           || (
-            hasPendingBootstrapUser()
-            && clientId == pendingBootstrapClientId()
+            isSelfBootstrapClient(clientId)
             && request.auth.uid == userId
           );
-        allow create: if isClientAdmin(clientId) || isSystemOwner() || (hasPendingBootstrapUser() && clientId == pendingBootstrapClientId() && request.auth.uid == userId);
+        allow create: if isClientAdmin(clientId)
+          || isSystemOwner()
+          || (
+            isSelfBootstrapClient(clientId)
+            && request.auth.uid == userId
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.clientId == clientId
+            && request.resource.data.role == 'admin'
+            && request.resource.data.isActive == true
+          );
         allow update, delete: if isClientAdmin(clientId) || isSystemOwner();
       }
 
@@ -109,11 +113,12 @@ service cloud.firestore {
         allow read: if isClientMember(clientId)
           || isSystemOwner()
           || (
-            hasPendingBootstrapUser()
-            && clientId == pendingBootstrapClientId()
+            isSelfBootstrapClient(clientId)
             && workerId == 'worker-001'
           );
-        allow create: if isClientAdmin(clientId) || isSystemOwner() || (hasPendingBootstrapUser() && clientId == pendingBootstrapClientId() && workerId == 'worker-001');
+        allow create: if isClientAdmin(clientId)
+          || isSystemOwner()
+          || (isSelfBootstrapClient(clientId) && workerId == 'worker-001');
         allow update, delete: if isClientAdmin(clientId) || isSystemOwner();
       }
 
@@ -121,11 +126,12 @@ service cloud.firestore {
         allow read: if isClientAdmin(clientId)
           || isSystemOwner()
           || (
-            hasPendingBootstrapUser()
-            && clientId == pendingBootstrapClientId()
+            isSelfBootstrapClient(clientId)
             && mappingId == 'current'
           );
-        allow create: if isClientAdmin(clientId) || isSystemOwner() || (hasPendingBootstrapUser() && clientId == pendingBootstrapClientId() && mappingId == 'current');
+        allow create: if isClientAdmin(clientId)
+          || isSystemOwner()
+          || (isSelfBootstrapClient(clientId) && mappingId == 'current');
         allow update, delete: if isClientAdmin(clientId) || isSystemOwner();
       }
 
@@ -164,43 +170,24 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
-      allow create: if hasPendingBootstrapUser()
+      allow create: if signedIn()
         && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/userTenants/$(uid))
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.clientId == selfBootstrapClientId()
         && request.resource.data.role == 'admin'
-        && request.resource.data.clientId == pendingBootstrapClientId()
-        && request.resource.data.isActive == true;
+        && request.resource.data.isActive == true
+        && request.resource.data.active == true;
       allow update, delete: if false;
     }
 
 
-    match /allowedBootstrapUsers/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
-      allow create, delete: if isSystemOwner();
-      allow update: if isSystemOwner()
-        || (
-          signedIn()
-          && request.auth.uid == uid
-          && resource.data.status == 'pending'
-          && request.resource.data.status == 'used'
-          && request.resource.data.usedByUid == request.auth.uid
-          && request.resource.data.clientId == resource.data.clientId
-          && request.resource.data.adminEmail == resource.data.adminEmail
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-            'status',
-            'usedAt',
-            'usedByUid',
-            'updatedAt'
-          ])
-        );
-    }
-
     match /userTenants/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
-      allow create: if hasPendingBootstrapUser()
+      allow create: if signedIn()
         && request.auth.uid == uid
         && !exists(/databases/$(database)/documents/userTenants/$(uid))
-        && request.resource.data.tenantId == pendingBootstrapClientId()
+        && request.resource.data.tenantId == selfBootstrapClientId()
         && request.resource.data.role == 'owner'
         && request.resource.data.active == true;
       allow update, delete: if false;
@@ -208,9 +195,8 @@ service cloud.firestore {
 
     match /tenants/{tenantId} {
       allow read: if isTenantMember(tenantId)
-        || (hasPendingBootstrapUser() && tenantId == pendingBootstrapClientId());
-      allow create: if hasPendingBootstrapUser()
-        && tenantId == pendingBootstrapClientId()
+        || isSelfBootstrapClient(tenantId);
+      allow create: if isSelfBootstrapClient(tenantId)
         && request.resource.data.status == 'active'
         && request.resource.data.bootstrap == true
         && request.resource.data.bootstrapByUid == request.auth.uid;
@@ -220,12 +206,10 @@ service cloud.firestore {
       match /members/{uid} {
         allow read: if isTenantMember(tenantId)
           || (
-            hasPendingBootstrapUser()
-            && tenantId == pendingBootstrapClientId()
+            isSelfBootstrapClient(tenantId)
             && request.auth.uid == uid
           );
-        allow create: if hasPendingBootstrapUser()
-          && tenantId == pendingBootstrapClientId()
+        allow create: if isSelfBootstrapClient(tenantId)
           && request.auth.uid == uid
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.role == 'owner'
