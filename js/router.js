@@ -6,6 +6,8 @@ import { renderUnstartedListView } from './views/unstarted-list-view.js';
 import { renderCompletedListView } from './views/completed-list-view.js';
 import { renderResultDownloadView } from './views/result-download-view.js';
 import { renderInternalUsersView } from './views/internal-users-view.js';
+import { renderWorkersView } from './views/workers-view.js';
+import { renderCsvMappingView } from './views/csv-mapping-view.js';
 
 const routes = {
   inspection: renderInspectionView,
@@ -14,6 +16,8 @@ const routes = {
   'unstarted-list': renderUnstartedListView,
   'completed-list': renderCompletedListView,
   'result-download': renderResultDownloadView,
+  workers: renderWorkersView,
+  'csv-mapping': renderCsvMappingView,
   'internal-users': renderInternalUsersView,
 };
 

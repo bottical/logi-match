@@ -1,5 +1,5 @@
 (function(){
-  const ctx = { uid:null,email:null,tenantId:null,role:null,displayName:null,tenantName:null };
+  const ctx = { uid:null,email:null,tenantId:null,clientId:null,role:null,displayName:null,tenantName:null,clientName:null };
   window.appContext = ctx;
 
   function normalizeRole(role) {
@@ -44,9 +44,11 @@
       await memberRef.set(member);
     }
 
-    Object.assign(ctx,{ uid:user.uid,email:user.email||null,tenantId,role:normalizeRole(member?.role || userTenant.role || 'owner'),displayName:userTenant.displayName||member?.displayName||null });
+    Object.assign(ctx,{ uid:user.uid,email:user.email||null,tenantId,clientId:tenantId,role:normalizeRole(member?.role || userTenant.role || 'owner'),displayName:userTenant.displayName||member?.displayName||null });
     const tenantSnap = await window.db.collection('tenants').doc(ctx.tenantId).get();
     ctx.tenantName = tenantSnap.exists ? (tenantSnap.data()?.name||null) : null;
+    ctx.clientId = tenantSnap.exists ? (tenantSnap.data()?.clientId || tenantId) : tenantId;
+    ctx.clientName = tenantSnap.exists ? (tenantSnap.data()?.clientName || ctx.tenantName) : ctx.tenantName;
     return ctx;
   };
 
