@@ -45,6 +45,14 @@ export function getCurrentPageId() {
   return rawHash.split('?')[0] || 'inspection';
 }
 
+export function getCurrentHashParams() {
+  const rawHash = window.location.hash.replace('#', '');
+  const queryString = rawHash.includes('?')
+    ? rawHash.split('?').slice(1).join('?')
+    : '';
+  return new URLSearchParams(queryString);
+}
+
 export function updateSidebarActive(pageId) {
   document.querySelectorAll('.sidebar-link[data-page]').forEach((link) => {
     link.classList.toggle('is-active', link.dataset.page === pageId);
