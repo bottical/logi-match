@@ -1,3 +1,4 @@
+console.info('[router] module loaded');
 import { initSidebar, bindSidebarNavigation, updateSidebarActive, getCurrentPageId } from './sidebar-shell.js';
 import { renderInspectionView } from './views/inspection-view.js';
 import { renderMasterImportView } from './views/master-import-view.js';
@@ -70,6 +71,7 @@ async function renderRoute() {
 window.addEventListener('hashchange', renderRoute);
 
 document.addEventListener('DOMContentLoaded', async () => {
+  console.info('[router] DOMContentLoaded');
   bindSidebarNavigation();
   if (!window.location.hash) {
     window.location.hash = '#inspection';
