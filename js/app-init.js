@@ -1,7 +1,7 @@
 (function(){
   function toErrorMessage(errorCode){
     const map = {
-      USER_NOT_REGISTERED: 'このログインユーザーはまだ利用登録されていません。管理者に確認してください。',
+      USER_NOT_REGISTERED: 'ログインユーザーの初期設定に失敗しました。Firebase Auth ユーザーが有効か確認してください。',
       CLIENT_ID_MISSING: 'ログインユーザーに clientId が設定されていません。',
       ROLE_MISSING: 'ログインユーザーに role が設定されていません。',
       USER_INACTIVE: 'このユーザーは無効化されています。',
