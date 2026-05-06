@@ -2,24 +2,63 @@
   const ctx = { uid:null,email:null,tenantId:null,role:null,displayName:null,tenantName:null };
   window.appContext = ctx;
 
+  function normalizeRole(role) {
+    if (role === 'operator') return 'worker';
+    return role || null;
+  }
+
   window.loadTenantContext = async function loadTenantContext(user){
     if(!window.db) throw new Error('DB_UNAVAILABLE');
-    const snap = await window.db.collection('userTenants').doc(user.uid).get();
-    if(!snap.exists) throw new Error('TENANT_NOT_FOUND');
-    const data=snap.data()||{};
-    if(data.active!==true) throw new Error('TENANT_INACTIVE');
-    Object.assign(ctx,{ uid:user.uid,email:user.email||null,tenantId:data.tenantId||null,role:data.role||null,displayName:data.displayName||null });
-    if(!ctx.tenantId) throw new Error('TENANT_NOT_FOUND');
+
+    const userTenantRef = window.db.collection('userTenants').doc(user.uid);
+    let userTenantSnap = await userTenantRef.get();
+    if(!userTenantSnap.exists && typeof window.bootstrapTenantIfNeeded === 'function') {
+      await window.bootstrapTenantIfNeeded(user);
+      userTenantSnap = await userTenantRef.get();
+    }
+    if(!userTenantSnap.exists) throw new Error('TENANT_NOT_FOUND');
+
+    const userTenant = userTenantSnap.data() || {};
+    if(userTenant.active!==true) throw new Error('TENANT_INACTIVE');
+
+    const tenantId = userTenant.tenantId || null;
+    if(!tenantId) throw new Error('TENANT_NOT_FOUND');
+
+    const memberRef = window.db.collection('tenants').doc(tenantId).collection('members').doc(user.uid);
+    const memberSnap = await memberRef.get();
+    let member = memberSnap.data() || null;
+    if(member?.active===false) throw new Error('MEMBER_INACTIVE');
+
+    if(!memberSnap.exists){
+      const now = window.firebase.firestore.FieldValue.serverTimestamp();
+      member = {
+        uid: user.uid,
+        tenantId,
+        role: userTenant.role || 'owner',
+        active: true,
+        email: user.email || null,
+        displayName: user.displayName || user.email || '',
+        createdAt: now,
+        updatedAt: now
+      };
+      await memberRef.set(member);
+    }
+
+    Object.assign(ctx,{ uid:user.uid,email:user.email||null,tenantId,role:normalizeRole(member?.role || userTenant.role || 'owner'),displayName:userTenant.displayName||member?.displayName||null });
     const tenantSnap = await window.db.collection('tenants').doc(ctx.tenantId).get();
     ctx.tenantName = tenantSnap.exists ? (tenantSnap.data()?.name||null) : null;
     return ctx;
   };
 
   const pagePermissions = {
-    inspection:['owner','admin','operator'], 'master-import':['owner','admin'], 'import-history':['owner','admin'], 'unstarted-list':['owner','admin','operator'], 'completed-list':['owner','admin'], 'result-download':['owner','admin']
+    inspection:['owner','admin','worker'], 'master-import':['owner','admin'], 'import-history':['owner','admin'], 'unstarted-list':['owner','admin','worker'], 'completed-list':['owner','admin'], 'result-download':['owner','admin'], 'internal-users':['systemOwner']
   };
   window.checkPagePermission = function(pageId){
-    const allowed = pagePermissions[pageId] || ['owner','admin','operator'];
+    if (pageId === 'internal-users' && typeof window.isInternalAdmin === 'function') {
+      if (!window.isInternalAdmin(ctx)) throw new Error('PERMISSION_DENIED');
+      return;
+    }
+    const allowed = pagePermissions[pageId] || ['owner','admin','worker'];
     if(!allowed.includes(ctx.role)) throw new Error('PERMISSION_DENIED');
   };
 })();
