@@ -78,7 +78,15 @@ const beforeQty=getActualQty(detail), targetQty=getTargetQty(detail);if(beforeQt
  const allDone=state.details.filter(d=>!isExcludedDetail(d)).every(d=>d.completed_flag);if(allDone){const activeDetails=state.details.filter(d=>!isExcludedDetail(d));const excludedCount=state.details.length-activeDetails.length;const targetTotal=activeDetails.reduce((n,d)=>n+getTargetQty(d),0);state.lastCompletedSummary=`${state.work.work_id} / 対象SKU ${activeDetails.length}件 / 対象数量 ${targetTotal}点 / 対象外 ${excludedCount}件`;playSound('strong-complete');render();$('scanQtyInput').value='1';resetToPickingNoInput({completed:true,completedSummary:state.lastCompletedSummary});return;}
  playSound(updated.completed_flag?'complete':'ok');render();$('scanQtyInput').value='1';focusJanInput();}
 async function init(){resetToPickingNoInput();$('headerUserName')?.remove();
- const workerSelect=$('workerSelect');const workers=await window.loadWorkers(window.appContext.tenantId);
+ const workerSelect=$('workerSelect');let workers=[];
+ try{
+  workers=await window.loadWorkers(window.appContext.tenantId);
+ }catch(error){
+  console.error('[inspection] failed to load workers', error);
+  setJudge('error','作業者一覧の取得に失敗しました。','Firestoreの workers パス設定を確認してください。');
+  render();
+  return;
+ }
  if(window.setWorkerList)window.setWorkerList(workers);
  if(!workers.length){
   $('workerDisplayName').textContent='未登録';
