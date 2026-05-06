@@ -1,19 +1,22 @@
 export const MENU_ITEMS = [
-  { id: 'inspection', label: '検品実行', hash: '#inspection', roles: ['worker', 'admin', 'systemOwner'] },
-  { id: 'master-import', label: 'ピッキングマスター登録', hash: '#master-import', roles: ['worker', 'admin', 'systemOwner'] },
-  { id: 'import-history', label: 'マスター投入履歴', hash: '#import-history', roles: ['worker', 'admin', 'systemOwner'] },
-  { id: 'unstarted-list', label: '検品未着手一覧', hash: '#unstarted-list', roles: ['worker', 'admin', 'systemOwner'] },
-  { id: 'completed-list', label: '検品完了一覧', hash: '#completed-list', roles: ['worker', 'admin', 'systemOwner'] },
-  { id: 'result-download', label: '検品実績DL', hash: '#result-download', roles: ['admin', 'systemOwner'] },
-  { id: 'workers', label: '作業者一覧', hash: '#workers', roles: ['admin', 'systemOwner'] },
-  { id: 'csv-mapping', label: 'CSVマッピング設定', hash: '#csv-mapping', roles: ['admin', 'systemOwner'] },
+  { id: 'inspection', label: '検品実行', hash: '#inspection', roles: ['owner', 'admin', 'worker', 'systemOwner'] },
+  { id: 'master-import', label: 'ピッキングマスター登録', hash: '#master-import', roles: ['owner', 'admin', 'systemOwner'] },
+  { id: 'import-history', label: 'マスター投入履歴', hash: '#import-history', roles: ['owner', 'admin', 'systemOwner'] },
+  { id: 'unstarted-list', label: '検品未着手一覧', hash: '#unstarted-list', roles: ['owner', 'admin', 'worker', 'systemOwner'] },
+  { id: 'completed-list', label: '検品完了一覧', hash: '#completed-list', roles: ['owner', 'admin', 'systemOwner'] },
+  { id: 'result-download', label: '検品実績DL', hash: '#result-download', roles: ['owner', 'admin', 'systemOwner'] },
+  { id: 'workers', label: '作業者管理', hash: '#workers', roles: ['owner', 'admin', 'systemOwner'] },
+  { id: 'csv-mapping', label: 'CSVマッピング', hash: '#csv-mapping', roles: ['owner', 'admin', 'systemOwner'] },
   { id: 'internal-users', label: 'ユーザー管理（弊社専用）', hash: '#internal-users', roles: ['systemOwner'] },
 ];
 
 let initialized = false;
-let lastRenderedRole = null;
+let lastRenderKey = null;
 
 function clearAppContext() {
+  initialized = false;
+  lastRenderKey = null;
+
   if (!window.appContext) return;
   window.appContext.uid = null;
   window.appContext.email = null;
@@ -21,17 +24,25 @@ function clearAppContext() {
   window.appContext.role = null;
 }
 
+function makeSidebarRenderKey(ctx) {
+  return [
+    ctx?.uid || '',
+    ctx?.tenantId || '',
+    ctx?.clientId || '',
+    ctx?.role || '',
+    ctx?.email || '',
+    ctx?.tenantName || '',
+    ctx?.clientName || '',
+  ].join('|');
+}
+
+function getSidebarHost() {
+  return document.getElementById('appSidebar') || document.getElementById('sidebarHost');
+}
+
 export function getCurrentPageId() {
   const rawHash = window.location.hash.replace('#', '') || 'inspection';
   return rawHash.split('?')[0] || 'inspection';
-}
-
-export function getCurrentHashParams() {
-  const rawHash = window.location.hash.replace('#', '');
-  const queryString = rawHash.includes('?')
-    ? rawHash.split('?').slice(1).join('?')
-    : '';
-  return new URLSearchParams(queryString);
 }
 
 export function updateSidebarActive(pageId) {
@@ -40,14 +51,14 @@ export function updateSidebarActive(pageId) {
   });
 }
 
-function getVisibleItems() {
-  const role = window.permissions?.normalizeRole(window.appContext?.role) || '';
+function getVisibleItems(ctx) {
+  const role = window.permissions?.normalizeRole(ctx?.role) || '';
   if (!role) return [];
   return MENU_ITEMS.filter((item) => item.roles.includes(role));
 }
 
 export function bindSidebarNavigation() {
-  const sidebar = document.getElementById('appSidebar');
+  const sidebar = getSidebarHost();
   if (!sidebar) return;
 
   sidebar.addEventListener('click', (event) => {
@@ -62,20 +73,38 @@ export function bindSidebarNavigation() {
   });
 }
 
-export function initSidebar() {
-  const sidebar = document.getElementById('appSidebar');
-  if (!sidebar) return;
-
-  const role = window.permissions?.normalizeRole(window.appContext?.role) || "";
-  if (initialized && lastRenderedRole === role) {
-    updateSidebarActive(getCurrentPageId());
+export function initSidebar(ctx = window.appContext, pageId = getCurrentPageId()) {
+  const sidebar = getSidebarHost();
+  if (!sidebar) {
+    console.warn('[sidebar] sidebar host not found');
     return;
   }
-  lastRenderedRole = role;
 
-  const visibleItems = getVisibleItems();
-  const tenantLabel = window.appContext?.tenantName || window.appContext?.tenantId || '';
-  const email = window.appContext?.email || '';
+  const role = window.permissions?.normalizeRole(ctx?.role) || '';
+  if (!role) {
+    console.warn('[sidebar] role is not resolved yet');
+    sidebar.innerHTML = '<div class="sidebar-empty"><p>表示可能なメニューがありません。</p><small>role: -</small></div>';
+    return;
+  }
+
+  const renderKey = makeSidebarRenderKey(ctx);
+
+  if (initialized && lastRenderKey === renderKey) {
+    updateSidebarActive(pageId);
+    return;
+  }
+
+  lastRenderKey = renderKey;
+
+  const visibleItems = getVisibleItems(ctx);
+  console.info('[sidebar] visible items', {
+    role,
+    count: visibleItems.length,
+    items: visibleItems.map((item) => item.id),
+  });
+
+  const tenantLabel = ctx?.tenantName || ctx?.tenantId || '';
+  const email = ctx?.email || '';
 
   sidebar.innerHTML = `
     <div class="sidebar-brand"><div class="sidebar-title">検品システム</div></div>
@@ -94,5 +123,5 @@ export function initSidebar() {
   });
 
   initialized = true;
-  updateSidebarActive(getCurrentPageId());
+  updateSidebarActive(pageId);
 }

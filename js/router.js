@@ -23,20 +23,6 @@ const routes = {
 
 let currentCleanup = null;
 
-function waitForAppContext(timeoutMs = 3000) {
-  return new Promise((resolve) => {
-    const startedAt = Date.now();
-    const tick = () => {
-      if (window.appContext?.role || Date.now() - startedAt > timeoutMs) {
-        resolve();
-        return;
-      }
-      window.requestAnimationFrame(tick);
-    };
-    tick();
-  });
-}
-
 async function renderRoute() {
   const pageId = getCurrentPageId();
   const renderer = routes[pageId];
@@ -50,13 +36,24 @@ async function renderRoute() {
     currentCleanup = null;
   }
 
-  updateSidebarActive(pageId);
   const content = document.getElementById('appContent');
   if (!content) return;
 
   content.innerHTML = '';
 
   try {
+    const ctx = await window.initializeAppContext(pageId);
+    console.info('[router] context loaded', {
+      pageId,
+      role: ctx?.role,
+      uid: ctx?.uid,
+      clientId: ctx?.clientId,
+      tenantId: ctx?.tenantId,
+    });
+
+    initSidebar(ctx, pageId);
+    updateSidebarActive(pageId);
+
     const cleanup = await renderer(content);
     if (typeof cleanup === 'function') currentCleanup = cleanup;
   } catch (error) {
@@ -73,8 +70,6 @@ async function renderRoute() {
 window.addEventListener('hashchange', renderRoute);
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await waitForAppContext();
-  initSidebar();
   bindSidebarNavigation();
   if (!window.location.hash) {
     window.location.hash = '#inspection';

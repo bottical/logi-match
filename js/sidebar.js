@@ -12,17 +12,17 @@
   function isShellMode(){ return new URLSearchParams(window.location.search).get('shell') === '1'; }
   window.renderSidebar = function(){
     if (isShellMode()) return;
-    const host=document.getElementById('sidebarHost'); if(!host) return;
-    const page=document.body.dataset.page||''; const role=window.permissions?.normalizeRole(window.appContext?.role); if(!role) return;
+    const host=document.getElementById('sidebarHost'); if(!host){ console.warn('[sidebar] sidebar host not found'); return; }
+    const page=document.body.dataset.page||''; const role=window.permissions?.normalizeRole(window.appContext?.role); if(!role){ console.warn('[sidebar] role is not resolved yet'); return; }
     const items=[
-      { id:'inspection',href:'./#inspection',label:'検品実行',roles:['worker','admin','systemOwner']},
-      { id:'master-import',href:'./#master-import',label:'ピッキングマスター登録',roles:['worker','admin','systemOwner']},
-      { id:'import-history',href:'./#import-history',label:'マスター投入履歴',roles:['worker','admin','systemOwner']},
-      { id:'unstarted-list',href:'./#unstarted-list',label:'検品未着手一覧',roles:['worker','admin','systemOwner']},
-      { id:'completed-list',href:'./#completed-list',label:'検品完了一覧',roles:['worker','admin','systemOwner']},
-      { id:'result-download',href:'./#result-download',label:'検品実績DL',roles:['admin','systemOwner']},
-      { id:'workers',href:'./#workers',label:'作業者一覧',roles:['admin','systemOwner']},
-      { id:'csv-mapping',href:'./#csv-mapping',label:'CSVマッピング設定',roles:['admin','systemOwner']},
+      { id:'inspection',href:'./#inspection',label:'検品実行',roles:['owner','admin','worker','systemOwner']},
+      { id:'master-import',href:'./#master-import',label:'ピッキングマスター登録',roles:['owner','admin','systemOwner']},
+      { id:'import-history',href:'./#import-history',label:'マスター投入履歴',roles:['owner','admin','systemOwner']},
+      { id:'unstarted-list',href:'./#unstarted-list',label:'検品未着手一覧',roles:['owner','admin','worker','systemOwner']},
+      { id:'completed-list',href:'./#completed-list',label:'検品完了一覧',roles:['owner','admin','systemOwner']},
+      { id:'result-download',href:'./#result-download',label:'検品実績DL',roles:['owner','admin','systemOwner']},
+      { id:'workers',href:'./#workers',label:'作業者一覧',roles:['owner','admin','systemOwner']},
+      { id:'csv-mapping',href:'./#csv-mapping',label:'CSVマッピング設定',roles:['owner','admin','systemOwner']},
       { id:'internal-users',href:'./#internal-users',label:'ユーザー管理（弊社専用）',roles:['systemOwner']}
     ].filter((i)=> i.roles.includes(role));
     host.className='main-sidebar inspection-sidebar';
