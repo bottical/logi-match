@@ -39,35 +39,121 @@ service cloud.firestore {
       return signedIn();
     }
 
+    function clientUserPath(clientId) {
+      return /databases/$(database)/documents/clients/$(clientId)/users/$(request.auth.uid);
+    }
+
+    function tenantMemberPath(clientId) {
+      return /databases/$(database)/documents/tenants/$(clientId)/members/$(request.auth.uid);
+    }
+
+    function hasClientUserDoc(clientId) {
+      return signedIn()
+        && exists(clientUserPath(clientId))
+        && get(clientUserPath(clientId)).data.active == true;
+    }
+
+    function hasTenantMemberDoc(clientId) {
+      return signedIn()
+        && exists(tenantMemberPath(clientId))
+        && get(tenantMemberPath(clientId)).data.active == true;
+    }
+
+    function clientRole(clientId) {
+      return hasClientUserDoc(clientId)
+        ? get(clientUserPath(clientId)).data.role
+        : (hasTenantMemberDoc(clientId) ? get(tenantMemberPath(clientId)).data.role : null);
+    }
+
+    function isClientMember(clientId) {
+      return hasClientUserDoc(clientId) || hasTenantMemberDoc(clientId);
+    }
+
+    function isClientAdmin(clientId) {
+      return clientRole(clientId) in ['admin', 'owner', 'systemOwner'];
+    }
+
+    function isSystemOwner() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/systemUsers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/systemUsers/$(request.auth.uid)).data.role == 'systemOwner';
+    }
+
+    match /clients/{clientId} {
+      allow read: if isClientMember(clientId) || isSystemOwner();
+      allow create, update, delete: if isClientAdmin(clientId) || isSystemOwner();
+
+      match /users/{userId} {
+        allow read: if request.auth.uid == userId || isClientAdmin(clientId) || isSystemOwner();
+        allow create, update, delete: if isClientAdmin(clientId) || isSystemOwner();
+      }
+
+      match /workers/{workerId} {
+        allow read: if isClientMember(clientId) || isSystemOwner();
+        allow create, update, delete: if isClientAdmin(clientId) || isSystemOwner();
+      }
+
+      match /csvMapping/{mappingId} {
+        allow read: if isClientAdmin(clientId) || isSystemOwner();
+        allow create, update, delete: if isClientAdmin(clientId) || isSystemOwner();
+      }
+
+      match /importBatches/{batchId} {
+        allow read: if isClientMember(clientId) || isSystemOwner();
+        allow create, update, delete: if isClientAdmin(clientId) || isSystemOwner();
+      }
+
+      match /inspectionWorks/{workId} {
+        allow read: if isClientMember(clientId) || isSystemOwner();
+        allow create: if isClientAdmin(clientId) || isSystemOwner();
+        allow update: if isClientMember(clientId) || isSystemOwner();
+        allow delete: if isClientAdmin(clientId) || isSystemOwner();
+
+        match /items/{itemId} {
+          allow read: if isClientMember(clientId) || isSystemOwner();
+          allow create: if isClientAdmin(clientId) || isSystemOwner();
+          allow update: if isClientMember(clientId) || isSystemOwner();
+          allow delete: if isClientAdmin(clientId) || isSystemOwner();
+        }
+      }
+
+      match /scanLogs/{logId} {
+        allow read: if isClientAdmin(clientId) || isSystemOwner();
+        allow create: if isClientMember(clientId) || isSystemOwner();
+        allow update, delete: if false;
+      }
+
+      match /operationLogs/{logId} {
+        allow read: if isClientAdmin(clientId) || isSystemOwner();
+        allow create: if isClientMember(clientId) || isSystemOwner();
+        allow update, delete: if false;
+      }
+    }
+
     match /userTenants/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
-
       allow create: if isAllowedBootstrapUser()
         && request.auth.uid == uid
         && !exists(/databases/$(database)/documents/userTenants/$(uid))
         && request.resource.data.tenantId == 'defaultTenant'
         && request.resource.data.role == 'owner'
         && request.resource.data.active == true;
-
       allow update, delete: if false;
     }
 
     match /tenants/{tenantId} {
       allow read: if isTenantMember(tenantId)
         || (isAllowedBootstrapUser() && isDefaultTenant(tenantId));
-
       allow create: if isAllowedBootstrapUser()
         && isDefaultTenant(tenantId)
         && request.resource.data.status == 'active'
         && request.resource.data.bootstrap == true
         && request.resource.data.bootstrapByUid == request.auth.uid;
-
       allow update: if isAdmin(tenantId);
       allow delete: if false;
 
       match /members/{uid} {
         allow read: if isTenantMember(tenantId);
-
         allow create: if isAllowedBootstrapUser()
           && isDefaultTenant(tenantId)
           && request.auth.uid == uid
@@ -75,24 +161,17 @@ service cloud.firestore {
           && request.resource.data.role == 'owner'
           && request.resource.data.active == true
           && request.resource.data.bootstrap == true;
-
         allow update, delete: if isAdmin(tenantId);
       }
 
       match /workers/{workerId} {
         allow read: if isTenantMember(tenantId)
-          || (
-            isAllowedBootstrapUser()
-            && isDefaultTenant(tenantId)
-            && workerId == 'default-worker'
-          );
-
+          || (isAllowedBootstrapUser() && isDefaultTenant(tenantId) && workerId == 'default-worker');
         allow create: if isAllowedBootstrapUser()
           && isDefaultTenant(tenantId)
           && workerId == 'default-worker'
           && request.resource.data.active == true
           && request.resource.data.bootstrap == true;
-
         allow update, delete: if isAdmin(tenantId);
       }
 

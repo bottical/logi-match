@@ -5,8 +5,10 @@
     window.workerContext.workers = Array.isArray(workers) ? workers : [];
   };
   window.loadWorkers = async function(tenantId){
-    const snap = await window.db.collection('tenants').doc(tenantId).collection('workers').where('active','==',true).get();
-    window.setWorkerList(snap.docs.map(d=>({workerId:d.id,...d.data()})));
+    const clientId = window.appContext?.clientId || tenantId;
+    const snap = await window.firestorePaths.workers(clientId).get();
+    const workers = snap.docs.map(d=>({workerId:d.id,...d.data()})).filter((w)=>w.isActive!==false && w.active!==false);
+    window.setWorkerList(workers);
     return window.workerContext.workers;
   };
   window.restoreSelectedWorker = function(tenantId){

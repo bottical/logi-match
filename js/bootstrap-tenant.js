@@ -25,6 +25,8 @@
     if (!tenantSnap.exists) {
       batch.set(tenantRef, {
         name: DEFAULT_TENANT_NAME,
+        clientId: tenantId,
+        clientName: DEFAULT_TENANT_NAME,
         status: 'active',
         createdAt: now,
         updatedAt: now,

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>CSVマッピング設定</title><link rel="stylesheet" href="./css/app.css" /></head>
+  <body data-page="csv-mapping">
+    <aside id="sidebarHost"></aside>
+    <main>
+      <h1>CSVマッピング設定</h1>
+      <p id="mappingStatus"></p>
+      <p class="help-text">列はExcel形式で指定してください。例：A, B, C</p>
+      <form id="mappingForm">
+        <label><input type="checkbox" id="hasHeader" /> ヘッダーあり</label>
+        <div><label>ピッキングNo.<input id="pickingNo" /></label></div>
+        <div><label>JAN<input id="jan" /></label></div>
+        <div><label>代替コード<input id="alternativeCode" /></label></div>
+        <div><label>商品名<input id="productName" /></label></div>
+        <div><label>数量<input id="quantity" /></label></div>
+        <div><label>お届け先名<input id="destinationName" /></label></div>
+        <div><label>伝票番号<input id="slipNo" /></label></div>
+        <div><label>出荷日<input id="shipDate" /></label></div>
+        <div><label>荷主名<input id="shipperName" /></label></div>
+        <div><label>ロケーション<input id="location" /></label></div>
+        <button type="submit">保存</button>
+      </form>
+    </main>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="./js/firebase-config.js"></script><script src="./js/auth.js"></script><script src="./js/auth-guard.js"></script><script src="./js/internal-auth.js"></script><script src="./js/tenant-context.js"></script><script src="./js/bootstrap-tenant.js"></script><script src="./js/permissions.js"></script><script src="./js/firestore-paths.js"></script><script src="./js/sidebar.js"></script><script src="./js/csv-mapping.js"></script>
+  </body>
+</html>

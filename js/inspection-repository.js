@@ -3,25 +3,24 @@
     return state?.work?.work_id;
   }
 
-  function requireTenantId() {
-    const tenantId = window.appContext?.tenantId;
-    if (!tenantId) throw new Error('TENANT_ID_MISSING');
-    return tenantId;
+  function requireClientId() {
+    const clientId = window.appContext?.clientId || window.appContext?.tenantId;
+    if (!clientId) throw new Error('CLIENT_ID_MISSING');
+    return clientId;
   }
 
-  // NOTE: Spec uses /clients/{clientId}. This codebase standardizes the same tenant boundary under /tenants/{tenantId}.
-  function tenantRef() { return window.db.collection('tenants').doc(requireTenantId()); }
+  function clientRef() { return window.firestorePaths.clientRoot(requireClientId()); }
 
   function inspectionWorkRef(workId) {
-    return tenantRef().collection('inspectionWorks').doc(workId);
+    return clientRef().collection('inspectionWorks').doc(workId);
   }
 
   function scanLogsRef() {
-    return tenantRef().collection('scanLogs');
+    return clientRef().collection('scanLogs');
   }
 
   function operationLogsRef() {
-    return tenantRef().collection('operationLogs');
+    return clientRef().collection('operationLogs');
   }
 
   function getCurrentUserId() {
@@ -46,9 +45,10 @@
     const resolvedImportDate = state.work.import_date || existingData.import_date || existingData.work?.import_date || null;
     const resolvedImportDateKey = state.work.import_date_key || existingData.import_date_key || existingData.work?.import_date_key || null;
 
-    // NOTE: details full-array save is a temporary structure for validation.
-    // TODO: migrate to details subcollection for production scalability.
-    // inspectionWorks/{work_id}/details/{detail_id}
+    // TODO(v1.1):
+    // 設計仕様では inspectionWorks/{workId}/items/{itemId} のサブコレクション構造を想定している。
+    // 現行実装は検品実行画面との互換性のため、details 配列を inspectionWorks ドキュメント内に保持している。
+    // サブコレクション化は repository 層の移行計画を作成してから実施する。
     const payload = {
       work_id: workId,
       status: state.work.status || 'unstarted',
@@ -79,7 +79,7 @@
       const opRef = operationLogsRef().doc();
       batch.set(opRef, {
         logId: opRef.id,
-        clientId: requireTenantId(),
+        clientId: requireClientId(),
         operationType: meta.reason,
         targetType: 'inspectionWork',
         targetId: workId,
@@ -214,8 +214,8 @@
       tx.set(workRef,{details,work,status:work.status,updated_at:now},{merge:true});
       const logRef = scanLogsRef().doc();
       const logId = logRef.id;
-      tx.set(logRef,{logId,clientId:requireTenantId(),workId,pickingNo:workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
-      if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:requireTenantId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||null},operatedAt:now}); }
+      tx.set(logRef,{logId,clientId:requireClientId(),workId,pickingNo:workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
+      if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:requireClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||null},operatedAt:now}); }
       return {ok:true,detailId:d.detail_id,state:{work,details}};
     });
   };
@@ -266,6 +266,6 @@
     if (!workId) throw new Error('work_id is missing.');
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
     const ref=scanLogsRef().doc();
-    await ref.set({ logId: ref.id, clientId: requireTenantId(), workId, ...log, scannedAt: log.scannedAt || now });
+    await ref.set({ logId: ref.id, clientId: requireClientId(), workId, ...log, scannedAt: log.scannedAt || now });
   };
 })();

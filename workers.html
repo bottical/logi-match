@@ -3,14 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ロジマッチ</title>
+    <title>作業者一覧</title>
     <link rel="stylesheet" href="./css/app.css" />
   </head>
-  <body>
-    <div class="app-shell">
-      <aside id="appSidebar" class="app-sidebar"></aside>
-      <main id="appContent" class="app-content" aria-live="polite"></main>
-    </div>
+  <body data-page="workers">
+    <aside id="sidebarHost"></aside>
+    <main>
+      <h1>作業者一覧</h1>
+      <p id="workersStatus"></p>
+      <table>
+        <thead>
+          <tr>
+            <th>作業者名</th><th>有効/無効</th><th>現在作業中のピッキングNo.</th><th>現在作業開始時刻</th><th>最終作業日時</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="workersBody"></tbody>
+      </table>
+    </main>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
@@ -22,8 +31,7 @@
     <script src="./js/bootstrap-tenant.js"></script>
     <script src="./js/permissions.js"></script>
     <script src="./js/firestore-paths.js"></script>
-    <script src="./js/app-init.js"></script>
-    <script type="module" src="./js/sidebar-shell.js"></script>
-    <script type="module" src="./js/router.js"></script>
+    <script src="./js/sidebar.js"></script>
+    <script src="./js/workers.js"></script>
   </body>
 </html>
