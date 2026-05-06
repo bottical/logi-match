@@ -1,11 +1,33 @@
 export const MENU_ITEMS = [
-  { id: 'inspection', label: '検品実行', hash: '#inspection', roles: ['owner', 'admin', 'operator'] },
+  { id: 'inspection', label: '検品実行', hash: '#inspection', roles: ['owner', 'admin', 'worker'] },
   { id: 'master-import', label: 'ピッキングマスター登録', hash: '#master-import', roles: ['owner', 'admin'] },
   { id: 'import-history', label: 'マスター投入履歴', hash: '#import-history', roles: ['owner', 'admin'] },
-  { id: 'unstarted-list', label: '検品未着手一覧', hash: '#unstarted-list', roles: ['owner', 'admin', 'operator'] },
+  { id: 'unstarted-list', label: '検品未着手一覧', hash: '#unstarted-list', roles: ['owner', 'admin', 'worker'] },
   { id: 'completed-list', label: '検品完了一覧', hash: '#completed-list', roles: ['owner', 'admin'] },
   { id: 'result-download', label: '検品実績DL', hash: '#result-download', roles: ['owner', 'admin'] },
+  { id: 'internal-users', label: 'ユーザー管理（弊社専用）', hash: '#internal-users', roles: ['systemOwner'], internalOnly: true },
 ];
+
+const ADMIN_ROLES = ['owner', 'admin'];
+const WORKER_ROLE = 'worker';
+
+function normalizeRole(role) {
+  return role === 'operator' ? WORKER_ROLE : role;
+}
+
+function isAdminRole(role) {
+  return ADMIN_ROLES.includes(normalizeRole(role));
+}
+
+function clearAppContext() {
+  if (!window.appContext) return;
+  window.appContext.uid = null;
+  window.appContext.email = null;
+  window.appContext.tenantId = null;
+  window.appContext.role = null;
+  window.appContext.displayName = null;
+  window.appContext.tenantName = null;
+}
 
 let initialized = false;
 
@@ -27,13 +49,22 @@ export function updateSidebarActive(pageId) {
 }
 
 function getVisibleItems() {
-  const role = window.appContext?.role;
-  if (!role) {
-    return MENU_ITEMS.filter((item) => item.roles.includes('operator'));
-  }
-  return MENU_ITEMS.filter((item) => item.roles.includes(role));
-}
+  const role = normalizeRole(window.appContext?.role);
+  if (!role) return [];
 
+  return MENU_ITEMS.filter((item) => {
+    if (item.internalOnly) {
+      return typeof window.isInternalAdmin === 'function' && window.isInternalAdmin(window.appContext);
+    }
+    if (role === WORKER_ROLE) {
+      return item.roles.includes(WORKER_ROLE);
+    }
+    if (isAdminRole(role)) {
+      return item.roles.includes(role) || item.roles.includes(WORKER_ROLE);
+    }
+    return item.roles.includes(role);
+  });
+}
 
 export function bindSidebarNavigation() {
   const sidebar = document.getElementById('appSidebar');
@@ -44,13 +75,11 @@ export function bindSidebarNavigation() {
     if (!link) return;
 
     event.preventDefault();
-
     const pageId = link.dataset.page;
     if (!pageId) return;
 
     const nextHash = `#${pageId}`;
     if (window.location.hash === nextHash) return;
-
     window.location.hash = nextHash;
   });
 }
@@ -75,6 +104,7 @@ export function initSidebar() {
   document.getElementById('shellLogoutLink')?.addEventListener('click', async (event) => {
     event.preventDefault();
     await window.authApi.logout();
+    clearAppContext();
     window.location.href = './login.html';
   });
 
