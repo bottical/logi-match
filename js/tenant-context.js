@@ -16,18 +16,18 @@
       await window.bootstrapTenantIfNeeded(user);
       userTenantSnap = await userTenantRef.get();
     }
-    if(!userTenantSnap.exists) throw new Error('TENANT_NOT_FOUND');
+    if(!userTenantSnap.exists) throw new Error('USER_NOT_REGISTERED');
 
     const userTenant = userTenantSnap.data() || {};
-    if(userTenant.active!==true) throw new Error('TENANT_INACTIVE');
+    if(userTenant.active!==true) throw new Error('USER_INACTIVE');
 
     const tenantId = userTenant.tenantId || null;
-    if(!tenantId) throw new Error('TENANT_NOT_FOUND');
+    if(!tenantId) throw new Error('CLIENT_ID_MISSING');
 
     const memberRef = window.db.collection('tenants').doc(tenantId).collection('members').doc(user.uid);
     const memberSnap = await memberRef.get();
     let member = memberSnap.data() || null;
-    if(member?.active===false) throw new Error('MEMBER_INACTIVE');
+    if(member?.active===false) throw new Error('USER_INACTIVE');
 
     if(!memberSnap.exists){
       const now = window.firebase.firestore.FieldValue.serverTimestamp();
@@ -44,8 +44,13 @@
       await memberRef.set(member);
     }
 
-    Object.assign(ctx,{ uid:user.uid,email:user.email||null,tenantId,clientId:tenantId,role:normalizeRole(member?.role || userTenant.role || 'owner'),displayName:userTenant.displayName||member?.displayName||null });
+    const resolvedRole = normalizeRole(member?.role || userTenant.role || null);
+    if(!resolvedRole) throw new Error('ROLE_MISSING');
+    if(!['admin','worker','owner','systemOwner'].includes(resolvedRole)) throw new Error('ROLE_MISSING');
+    Object.assign(ctx,{ uid:user.uid,email:user.email||null,tenantId,clientId:tenantId,role:resolvedRole,displayName:userTenant.displayName||member?.displayName||null });
     const tenantSnap = await window.db.collection('tenants').doc(ctx.tenantId).get();
+    if (!tenantSnap.exists) throw new Error('CLIENT_NOT_FOUND');
+    if (tenantSnap.data()?.status === 'inactive' || tenantSnap.data()?.isActive === false) throw new Error('CLIENT_INACTIVE');
     ctx.tenantName = tenantSnap.exists ? (tenantSnap.data()?.name||null) : null;
     ctx.clientId = tenantSnap.exists ? (tenantSnap.data()?.clientId || tenantId) : tenantId;
     ctx.clientName = tenantSnap.exists ? (tenantSnap.data()?.clientName || ctx.tenantName) : ctx.tenantName;

@@ -80,6 +80,12 @@ const beforeQty=getActualQty(detail), targetQty=getTargetQty(detail);if(beforeQt
 async function init(){resetToPickingNoInput();$('headerUserName')?.remove();
  const workerSelect=$('workerSelect');const workers=await window.loadWorkers(window.appContext.tenantId);
  if(window.setWorkerList)window.setWorkerList(workers);
+ if(!workers.length){
+  $('workerDisplayName').textContent='未登録';
+  setJudge('warning','作業者が登録されていません','管理者に確認してください。');
+  render();
+  return;
+ }
  workers.forEach(w=>{const o=document.createElement('option');o.value=w.workerId;o.textContent=`${w.workerCode||''} ${w.workerName||w.workerId}`;workerSelect.appendChild(o);});
  const restored=window.restoreSelectedWorker?.(window.appContext.tenantId);
  if(restored?.workerId){
