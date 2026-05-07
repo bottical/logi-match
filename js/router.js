@@ -10,7 +10,7 @@ import { renderWorkersView } from './views/workers-view.js';
 import { renderCsvMappingView } from './views/csv-mapping-view.js';
 import { renderInternalWorkersView } from './views/internal-workers-view.js';
 
-const ASSET_VERSION = '20260507-4';
+const ASSET_VERSION = '20260507-7';
 
 const routes = {
   inspection: async (container) => {
