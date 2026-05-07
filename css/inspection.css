@@ -69,10 +69,12 @@
 .inspection-navbar { min-height:48px; display:flex; align-items:center; gap:12px; }
 .inspection-navbar .navbar-nav { display:flex; align-items:center; gap:10px; }
 .inspection-navbar .ml-auto { margin-left:auto; }
-.worker-inline{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px}
-.worker-inline .link-button { padding:4px 8px; font-size:12px; }
-.link-button{border:0;background:none;color:#0d6efd;cursor:pointer}
-.worker-select-inline{max-width:160px;height:32px;font-size:13px}
+.inspection-worker-bar{display:flex;align-items:center;justify-content:flex-end;gap:10px;min-height:42px;margin:0 0 10px;padding:8px 10px;border:1px solid #d8dde3;background:#f8fafc;border-radius:8px}
+.inspection-worker-current{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px}
+.inspection-worker-label{color:#64748b;font-weight:700}
+.inspection-worker-current strong{color:#0f172a;font-size:14px}
+.inspection-worker-change-button{height:30px;padding:0 10px;border:1px solid #0d6efd;background:#fff;color:#0d6efd;border-radius:4px;cursor:pointer;font-size:12px;font-weight:700}
+.inspection-worker-select{height:32px;min-width:180px;max-width:240px;border:1px solid #bfc7d1;border-radius:4px;padding:4px 8px;font-size:13px;background:#fff}
 .more-menu summary{cursor:pointer;list-style:none}
 .more-menu[open]{background:#fff;border:1px solid #d8dde3;padding:6px}
 .menu-danger{border:0;background:transparent;color:#b91c1c;cursor:pointer;padding:4px 0}
@@ -84,7 +86,7 @@
 .last-completed-summary{font-size:13px;color:#334155;background:#f8fafc;border:1px solid #d8dde3;padding:8px 10px}
 .inspection-progress-card{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;background:#f8fafc;border:1px solid #d8dde3;padding:10px}
 .inspection-judge{min-height:140px}.inspection-judge #mainMsgTxt{font-size:36px}
-@media (max-width: 900px){.inspection-navbar{flex-wrap:wrap}.worker-inline{font-size:12px}.worker-select-inline{max-width:140px}.inspection-input-bar{grid-template-columns:1fr}.inspection-progress-card{grid-template-columns:1fr 1fr}}
+@media (max-width: 900px){.inspection-navbar{flex-wrap:wrap}.inspection-worker-bar{justify-content:flex-start;flex-wrap:wrap}.inspection-worker-current{width:100%}.inspection-worker-change-button,.inspection-worker-select{width:100%;max-width:none}.inspection-input-bar{grid-template-columns:1fr}.inspection-progress-card{grid-template-columns:1fr 1fr}}
 
 html.shell-embedded-root .main-sidebar,
 html.shell-embedded-root .main-header,
