@@ -10,5 +10,10 @@ window.inspectionState = {
   recentScan: null,
   syncStatus: 'idle',
   lock: { locked: false, reason: null, worker_id: null, started_at: null },
-  qtyMode: { enabled: false, qty: 1 }
+  qtyMode: { enabled: false, qty: 1 },
+  currentWork: null,
+  currentItems: [],
+  scanIndex: new Map(),
+  pendingWrites: [],
+  isSyncBlocked: false
 };
