@@ -9,6 +9,7 @@ import { renderResultDownloadView } from './views/result-download-view.js';
 import { renderInternalUsersView } from './views/internal-users-view.js';
 import { renderWorkersView } from './views/workers-view.js';
 import { renderCsvMappingView } from './views/csv-mapping-view.js';
+import { renderInternalWorkersView } from './views/internal-workers-view.js';
 
 const routes = {
   inspection: renderInspectionView,
@@ -20,6 +21,7 @@ const routes = {
   workers: renderWorkersView,
   'csv-mapping': renderCsvMappingView,
   'internal-users': renderInternalUsersView,
+  'internal-workers': renderInternalWorkersView,
 };
 
 let currentCleanup = null;
@@ -34,6 +36,7 @@ const framePageIds = new Set([
   'workers',
   'csv-mapping',
   'internal-users',
+  'internal-workers',
 ]);
 
 async function renderRoute() {

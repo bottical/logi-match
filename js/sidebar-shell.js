@@ -8,6 +8,7 @@ export const MENU_ITEMS = [
   { id: 'workers', label: '作業者管理', hash: '#workers', roles: ['owner', 'admin', 'systemOwner'] },
   { id: 'csv-mapping', label: 'CSVマッピング', hash: '#csv-mapping', roles: ['owner', 'admin', 'systemOwner'] },
   { id: 'internal-users', label: 'ユーザー管理（弊社専用）', hash: '#internal-users', roles: ['systemOwner'] },
+  { id: 'internal-workers', label: '作業者管理（弊社専用）', hash: '#internal-workers', roles: ['systemOwner', 'owner'] },
 ];
 
 let initialized = false;
