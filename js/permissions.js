@@ -2,7 +2,6 @@
   function normalizeRole(role) {
     const value = String(role || '').trim();
     if (value === 'operator') return 'worker';
-    if (value === 'owner') return 'admin';
     return value;
   }
 

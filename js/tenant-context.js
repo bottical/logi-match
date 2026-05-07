@@ -2,7 +2,18 @@
   const ctx = { uid:null,email:null,tenantId:null,clientId:null,role:null,displayName:null,tenantName:null,clientName:null };
   window.appContext = ctx;
 
-  function normalizeRole(role) { return role === 'operator' ? 'worker' : (role || null); }
+  function normalizeRole(role) {
+    if (role === 'operator') return 'worker';
+    return role || null;
+  }
+
+  function pickRoleByPriority(candidates) {
+    for (const candidate of candidates) {
+      const normalized = normalizeRole(candidate);
+      if (normalized) return normalized;
+    }
+    return null;
+  }
 
   async function resolve(user){
     if(!window.db) throw new Error('DB_UNAVAILABLE');
@@ -39,7 +50,25 @@
       throw new Error('USER_INACTIVE');
     }
 
-    const resolvedRole = normalizeRole(member?.role || userTenant.role || null);
+    const clientIdFromUserTenant = userTenant.clientId || tenantId;
+    const clientUserRef = window.db.collection('clients').doc(clientIdFromUserTenant).collection('users').doc(user.uid);
+    const globalUserRef = window.db.collection('users').doc(user.uid);
+    const [clientUserSnap, globalUserSnap] = await Promise.all([
+      clientUserRef.get(),
+      globalUserRef.get(),
+    ]);
+
+    const clientUser = clientUserSnap.data() || null;
+    const globalUser = globalUserSnap.data() || null;
+
+    // 権限の正は clients/{clientId}/users/{uid} を最優先にし、
+    // 取得できない場合のみテナント配下・ユーザープロファイルにフォールバックする。
+    const resolvedRole = pickRoleByPriority([
+      clientUser?.role,
+      member?.role,
+      userTenant?.role,
+      globalUser?.role,
+    ]);
     if(!resolvedRole) throw new Error('ROLE_MISSING');
 
     const tenantSnap = await window.db.collection('tenants').doc(tenantId).get();
@@ -53,7 +82,16 @@
   }
 
   const pagePermissions = {
-    inspection:['owner','admin','worker'], 'master-import':['owner','admin'], 'import-history':['owner','admin'], 'unstarted-list':['owner','admin','worker'], 'completed-list':['owner','admin'], 'result-download':['owner','admin'], 'workers':['owner','admin'], 'csv-mapping':['owner','admin'], 'internal-users':['systemOwner']
+    inspection:['owner','admin','worker','systemOwner'],
+    'master-import':['owner','admin','systemOwner'],
+    'import-history':['owner','admin','systemOwner'],
+    'unstarted-list':['owner','admin','worker','systemOwner'],
+    'completed-list':['owner','admin','systemOwner'],
+    'result-download':['owner','admin','systemOwner'],
+    workers:['owner','admin','systemOwner'],
+    'csv-mapping':['owner','admin','systemOwner'],
+    'internal-users':['systemOwner'],
+    'internal-workers':['systemOwner']
   };
   window.checkPagePermission = function(pageId){
     if (pageId === 'internal-users' && typeof window.isInternalAdmin === 'function') {
