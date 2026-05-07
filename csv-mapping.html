@@ -42,9 +42,13 @@
               <p>ピッキングNo.と数量は必須です。</p>
               <p>JANまたは代替コードのどちらか一方は必ず設定してください。</p>
               <p>商品名・お届け先名は推奨項目のため、未設定でも取込可能ですが、CSV取込時に警告対象になります。</p>
+              <p>「伝票番号も検品対象にする」をONにすると、伝票番号列が必須になります。</p>
             </div>
             <form id="mappingForm" class="csv-mapping-form">
               <label class="csv-mapping-header-toggle"><input type="checkbox" id="hasHeader" /> ヘッダーあり</label>
+              <label class="csv-mapping-header-toggle"><input type="checkbox" id="inspectSlipNo" /> 伝票番号も検品対象にする</label>
+              <p class="csv-mapping-option-note">ONの場合、CSV取込時に伝票番号バーコードを検品対象として追加します。JAN/代替コードに加えて、伝票番号の読み取りが完了するまでピッキングNo.は完了になりません。</p>
+
               <div class="table-wrap">
                 <table class="data-table">
                   <thead>

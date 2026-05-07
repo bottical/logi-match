@@ -256,11 +256,12 @@
       const tqty=(d)=>Number(d?.target_qty ?? d?.targetQty ?? 0);
       const aqty=(d)=>Number(d?.actual_qty ?? d?.actualQty ?? 0);
       const excluded=(d)=>d?.inspectionRequired===false||d?.inspection_required===false||tqty(d)===0;
-      const scanKey=(d)=>[...(Array.isArray(d.scanKeys)?d.scanKeys:[]),{type:'jan',value:d.main_barcode||d.scan_code||d.jan},{type:'alternative',value:d.alt_code||d.alternativeCode}].map(k=>({type:k.type||'unknown',value:norm(k.value)})).filter(k=>k.value);
+      const scanKey=(d)=>[...(Array.isArray(d.scanKeys)?d.scanKeys:[]),{type:'jan',value:d.main_barcode||d.scan_code||d.jan},{type:'alternative',value:d.alt_code||d.alternativeCode},{type:'slipNo',value:d.slipNo}].map(k=>({type:k.type||'unknown',value:norm(k.value)})).filter(k=>k.value);
       const code=norm(scannedCode);
       let idx=-1, codeType='unknown';
       for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='jan'&&k.value===code)){idx=i;codeType='jan';break;}}
       if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='alternative'&&k.value===code)){idx=i;codeType='alternative';break;}}}
+      if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='slipNo'&&k.value===code)){idx=i;codeType='slipNo';break;}}}
       if(idx<0) return {ok:false,message:'not found'};
       const d=details[idx]; const before=aqty(d); const target=tqty(d); const after=before+Number(inputQty||0);
       if(after>target) return {ok:false,message:'over qty'};
