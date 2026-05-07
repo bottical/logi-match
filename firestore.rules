@@ -26,7 +26,7 @@ service cloud.firestore {
     }
 
     match /userTenants/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if (signedIn() && request.auth.uid == uid) || isSystemOwner();
       allow create, update: if isSystemOwner();
       allow delete: if false;
     }
