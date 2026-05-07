@@ -15,7 +15,7 @@
     return map[errorCode] || '利用権限またはテナント設定に問題があります。管理者に確認してください。';
   }
 
-  window.initializeAppContext = async function(pageId){
+  window.requireAppContext = async function requireAppContext(pageId){
     try {
       const user = await window.requireLogin();
 
@@ -24,6 +24,14 @@
       }
 
       await window.loadTenantContext(user);
+      window.appContext = {
+        ...window.appContext,
+        db: window.db,
+        auth: window.auth,
+        user,
+        userId: user.uid,
+        email: user.email || null
+      };
 
       const clientId = window.appContext?.clientId;
       const pagesRequireCsvMapping = ['master-import', 'csv-mapping'];
@@ -41,4 +49,6 @@
       throw e;
     }
   };
+
+  window.initializeAppContext = window.requireAppContext;
 })();

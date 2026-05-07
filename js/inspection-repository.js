@@ -180,6 +180,7 @@
     const { workId, scannedCode, inputQty, workerId, workerName, userId, deviceId } = input;
     const workRef = inspectionWorkRef(workId);
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const completedAtValue = now;
     return window.db.runTransaction(async (tx) => {
       const snap = await tx.get(workRef);
       if (!snap.exists) return { ok:false, message:'work not found' };
@@ -209,12 +210,12 @@
       work.excludedItemCount = details.length - active.length;
       work.status=completed?'completed':'current';
       work.completed_flag=completed;
-      if(completed){ work.completed_at = new Date().toISOString(); work.current_worker_id=null; work.current_worker_name=null; work.current_login_uid=null; work.current_login_email=null; work.current_device_id=null; work.lock_acquired_at=null; work.current_started_at=null; work.currentWorkerId=null; work.currentWorkerName=null; work.currentDeviceId=null; work.lockAcquiredAt=null; }
+      if(completed){ work.completed_at = completedAtValue; work.completedAt = completedAtValue; work.completedWorkerId = workerId||work.current_worker_id||work.currentWorkerId||null; work.completedWorkerName = workerName||work.current_worker_name||work.currentWorkerName||null; work.current_worker_id=null; work.current_worker_name=null; work.current_login_uid=null; work.current_login_email=null; work.current_device_id=null; work.lock_acquired_at=null; work.current_started_at=null; work.currentWorkerId=null; work.currentWorkerName=null; work.currentDeviceId=null; work.lockAcquiredAt=null; }
       work.lastActivityAt=new Date().toISOString();
-      tx.set(workRef,{details,work,status:work.status,updated_at:now},{merge:true});
+      tx.set(workRef,{details,work,status:work.status,updated_at:now,updatedAt:now,...(completed?{completedAt:completedAtValue,completed_at:completedAtValue,completedWorkerId:work.completedWorkerId||workerId||null,completedWorkerName:work.completedWorkerName||workerName||null}:{} )},{merge:true});
       const logRef = scanLogsRef().doc();
       const logId = logRef.id;
-      tx.set(logRef,{logId,clientId:requireClientId(),workId,pickingNo:workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
+      tx.set(logRef,{logId,clientId:requireClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
       if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:requireClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||null},operatedAt:now}); }
       return {ok:true,detailId:d.detail_id,state:{work,details}};
     });
