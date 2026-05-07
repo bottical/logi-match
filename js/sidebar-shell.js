@@ -5,10 +5,10 @@ export const MENU_ITEMS = [
   { id: 'unstarted-list', label: '検品未着手一覧', hash: '#unstarted-list', roles: ['owner', 'admin', 'worker', 'systemOwner'] },
   { id: 'completed-list', label: '検品完了一覧', hash: '#completed-list', roles: ['owner', 'admin', 'systemOwner'] },
   { id: 'result-download', label: '検品実績DL', hash: '#result-download', roles: ['owner', 'admin', 'systemOwner'] },
-  { id: 'workers', label: '作業者管理', hash: '#workers', roles: ['owner', 'admin', 'systemOwner'] },
+  { id: 'workers', label: '作業者状態', hash: '#workers', roles: ['owner', 'admin', 'systemOwner'] },
   { id: 'csv-mapping', label: 'CSVマッピング', hash: '#csv-mapping', roles: ['owner', 'admin', 'systemOwner'] },
   { id: 'internal-users', label: 'ユーザー管理（弊社専用）', hash: '#internal-users', roles: ['systemOwner'] },
-  { id: 'internal-workers', label: '作業者管理（弊社専用）', hash: '#internal-workers', roles: ['systemOwner', 'owner'] },
+  { id: 'internal-workers', label: '検品作業者管理（弊社専用）', hash: '#internal-workers', roles: ['systemOwner'] },
 ];
 
 let initialized = false;
