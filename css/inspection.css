@@ -29,8 +29,10 @@
 .scan-input,#scanCodeInput,#scanQtyInput,#pickingNoInput{height:44px;font-size:22px;font-weight:700;letter-spacing:.04em;padding:4px 12px;border:1px solid #aeb7c2;border-radius:4px;background:#fff;min-width:360px}
 #scanSubmitButton,#loadPickingButton,.primary-action{height:44px;min-width:96px;border:none;border-radius:4px;background:#0075d9;color:#fff;font-weight:700;cursor:pointer;padding:0 16px}
 .inspection-main-panels{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.inspection-meta-panel{display:grid;grid-template-columns:repeat(4,minmax(120px,1fr));gap:8px;background:#fff;border:1px solid #d8dde3;padding:10px}
+.inspection-meta-panel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;background:#fff;border:1px solid #d8dde3;padding:10px}
+.inspection-meta-panel>div{min-width:0}
 .inspection-meta-panel strong{font-size:16px}
+.inspection-meta-panel .truncate-text,.inspection-meta-panel strong{display:block;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .inspection-judge{border:1px solid #d8dde3;background:#f8f9fa;min-height:220px;padding:16px;color:#374151;display:grid;place-items:center;text-align:center}
 .inspection-judge #mainMsgTxt{font-size:44px;font-weight:800;margin:0}
 .inspection-judge-progress{font-size:22px;font-weight:700;margin:8px 0 0}
@@ -64,7 +66,7 @@
 .error-list{color:#b91c1c}.warning-list{color:#c2410c}
 #scanCodeInput:disabled,#scanQtyInput:disabled,.scan-input:disabled{background:#eef1f5;color:#9aa3ad;cursor:not-allowed}
 .nav-link{display:block;padding:8px 10px;text-decoration:none;color:#495057}
-@media (max-width: 900px){ .inspection-page .main-sidebar{transform:translateX(-100%);width:220px;z-index:20;pointer-events:none} .inspection-page:not(.sidebar-collapsed) .main-sidebar{transform:translateX(0);pointer-events:auto} .inspection-page .content-wrapper,.inspection-page.sidebar-collapsed .content-wrapper{margin-left:0;} .inspection-main-panels{grid-template-columns:1fr;} .inspection-meta-panel{grid-template-columns:1fr 1fr;} .inspection-scan-row,.scan-row{flex-direction:column;align-items:stretch;} .scan-input,#scanCodeInput,#scanQtyInput,#pickingNoInput{width:100%;min-width:0;font-size:20px} #scanSubmitButton,#loadPickingButton,.primary-action{width:100%} }
+@media (max-width: 900px){ .inspection-page .main-sidebar{transform:translateX(-100%);width:220px;z-index:20;pointer-events:none} .inspection-page:not(.sidebar-collapsed) .main-sidebar{transform:translateX(0);pointer-events:auto} .inspection-page .content-wrapper,.inspection-page.sidebar-collapsed .content-wrapper{margin-left:0;} .inspection-main-panels{grid-template-columns:1fr;} .inspection-meta-panel{grid-template-columns:repeat(2,minmax(0,1fr));} .inspection-scan-row,.scan-row{flex-direction:column;align-items:stretch;} .scan-input,#scanCodeInput,#scanQtyInput,#pickingNoInput{width:100%;min-width:0;font-size:20px} #scanSubmitButton,#loadPickingButton,.primary-action{width:100%} }
 .app-title{font-weight:700}.top-status{font-weight:700;color:#0f172a}
 .inspection-navbar { min-height:48px; display:flex; align-items:center; gap:12px; }
 .inspection-navbar .navbar-nav { display:flex; align-items:center; gap:10px; }
@@ -122,6 +124,7 @@ html.shell-embedded-root body { background: #fff; }
 .mapping-badge--optional { background:#f3f4f6; color:#374151; }
 
 #detailTable td.cell-jan{white-space:nowrap;font-family:monospace;}
+#detailTable td.cell-product-name{max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 
 

@@ -90,7 +90,12 @@
           details.push(...slipMap.values());
         }
         const importDate=nowIso(); const importDateKey=dateKey();
-        batch.set(ref,{work_id:workId,status:'unstarted',import_date:importDate,import_date_key:importDateKey,deleted_flag:false,work:{work_id:workId,batch_id:batchId,recipient_name:items[0].recipient_name||'',import_date:importDate,import_date_key:importDateKey,shipment_date:items[0].shipment_date||null,status:'unstarted',current_worker_id:null,current_started_at:null,completed_flag:false,started_at:null,completed_at:null,suspended_at:null,reset_count:0,deleted_flag:false,created_at:importDate,updated_at:importDate},details,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:window.firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+        const destinationName=items[0].destinationName||items[0].recipient_name||items[0].recipientName||'';
+        const slipNo=items[0].slipNo||items[0].slip_no||'';
+        const shipDate=items[0].shipDate||items[0].ship_date||items[0].shipment_date||null;
+        const shipperName=items[0].shipperName||items[0].shipper_name||'';
+        const location=items[0].location||'';
+        batch.set(ref,{work_id:workId,status:'unstarted',import_date:importDate,import_date_key:importDateKey,deleted_flag:false,destinationName,slipNo,shipDate,shipperName,location,work:{work_id:workId,batch_id:batchId,recipient_name:destinationName,destinationName,slipNo,shipDate,shipperName,location,import_date:importDate,import_date_key:importDateKey,shipment_date:shipDate,status:'unstarted',current_worker_id:null,current_started_at:null,completed_flag:false,started_at:null,completed_at:null,suspended_at:null,reset_count:0,deleted_flag:false,created_at:importDate,updated_at:importDate},details,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:window.firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
         writes++; await commitBatchIfNeeded(); successWorks++; successDetails+=details.length;
       }
       $('importStatus').textContent='Firestore保存中...'; await commitBatchIfNeeded(true);
