@@ -62,19 +62,21 @@
   }
 
   console.info('[workers] module loaded', {
-    hasInitializeAppContext: typeof window.initializeAppContext === 'function',
+    hasAppInit: typeof window.appInit?.ready === 'function',
     hasFirestorePaths: !!window.firestorePaths,
     hasDb: !!window.db,
   });
 
-  if (typeof window.initializeAppContext !== 'function') {
-    console.error('[workers] initializeAppContext is missing. Check script order in workers.html.');
-    statusEl.textContent = '初期化に失敗しました。app-init.js の読み込み順を確認してください。';
+  let ctx;
+  try {
+    ctx = await window.appInit.ready(document.body.dataset.page);
+    console.debug('[app-init]', { page: document.body.dataset.page, hasAppInit: !!window.appInit, hasFirestorePaths: !!window.firestorePaths, clientId: ctx.clientId, role: ctx.role, pathKeys: Object.keys(ctx.paths || {}) });
+    window.renderSidebar?.();
+  } catch (error) {
+    console.error('[workers] init failed', error);
+    if (statusEl) statusEl.textContent = '初期設定に失敗しました。ログイン状態またはテナント設定を確認してください。';
     return;
   }
-
-  await window.initializeAppContext('workers');
-  window.renderSidebar?.();
   if (!window.permissions?.canViewAdminMenu(window.appContext)) {
     statusEl.textContent = 'この機能は管理者向け機能です。現在実装中です。';
     return;
