@@ -1,9 +1,22 @@
 <!doctype html>
 <html lang="ja">
-  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>CSVマッピング設定</title><link rel="stylesheet" href="./css/app.css" /></head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CSVマッピング設定</title>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        if (params.get('shell') === '1') {
+          document.documentElement.classList.add('shell-embedded-root');
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="./css/app.css" />
+  </head>
   <body data-page="csv-mapping">
     <aside id="sidebarHost"></aside>
-    <main>
+    <main class="page-main">
       <h1>CSVマッピング設定</h1>
       <p id="mappingStatus"></p>
       <p class="help-text">列はExcel形式で指定してください。例：A, B, C</p>
