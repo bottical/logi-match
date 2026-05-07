@@ -5,7 +5,17 @@
 
   function isValidColumnLetter(value) {
     if (!value) return true;
-    return /^[A-Z]+$/.test(value);
+    return /^[A-Z]+$/i.test(value);
+  }
+
+  function setStatus(message, type) {
+    if (!statusEl) return;
+    statusEl.className = `status-message status-message--${type}`;
+    statusEl.textContent = message;
+  }
+
+  function normalizeColumnValue(value) {
+    return String(value || '').trim().toUpperCase();
   }
 
   let ctx;
@@ -15,13 +25,13 @@
     window.renderSidebar?.();
   } catch (error) {
     console.error('[csv-mapping] init failed', error);
-    if (statusEl) statusEl.textContent = '初期設定に失敗しました。ログイン状態またはテナント設定を確認してください。';
+    setStatus('初期設定に失敗しました。ログイン状態またはテナント設定を確認してください。', 'error');
     if (form) form.hidden = true;
     return;
   }
 
   if (!window.permissions?.canEditCsvMapping(window.appContext)) {
-    statusEl.textContent = 'この機能は管理者向け機能です。現在実装中です。';
+    setStatus('この機能は管理者向け機能です。現在実装中です。', 'error');
     form.hidden = true;
     return;
   }
@@ -35,22 +45,28 @@
   const data = doc.exists ? doc.data() : {};
   document.getElementById('hasHeader').checked = Boolean(data.hasHeader ?? true);
   const cols = data.columns || {};
-  fields.forEach((key) => { document.getElementById(key).value = cols[key] || ''; });
+  fields.forEach((key) => { document.getElementById(key).value = normalizeColumnValue(cols[key] || ''); });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const hasHeader = document.getElementById('hasHeader').checked;
     const columns = {};
     fields.forEach((key) => {
-      columns[key] = String(document.getElementById(key).value || '').trim().toUpperCase();
+      const normalized = normalizeColumnValue(document.getElementById(key).value);
+      columns[key] = normalized;
+      document.getElementById(key).value = normalized;
     });
 
     const invalidFields = fields.filter((key) => columns[key] && !isValidColumnLetter(columns[key]));
-    if (invalidFields.length) return void (statusEl.textContent = `列指定が不正です: ${invalidFields.join(', ')}。A, B, C の形式で入力してください。`);
+    if (invalidFields.length) return void setStatus(`列指定が不正です: ${invalidFields.join(', ')}。A, B, C, AA の形式で入力してください。`, 'error');
 
-    if (!columns.pickingNo) return void (statusEl.textContent = 'ピッキングNo.列は必須です。');
-    if (!columns.quantity) return void (statusEl.textContent = '数量列は必須です。');
-    if (!columns.jan && !columns.alternativeCode) return void (statusEl.textContent = 'JAN列または代替コード列のいずれかは必須です。');
+    if (!columns.pickingNo) return void setStatus('ピッキングNo.は必須です。', 'error');
+    if (!columns.quantity) return void setStatus('数量は必須です。', 'error');
+    if (!columns.jan && !columns.alternativeCode) return void setStatus('JANまたは代替コードのいずれかは必須です。', 'error');
+
+    const usedColumns = fields.filter((key) => columns[key]).map((key) => columns[key]);
+    const duplicates = [...new Set(usedColumns.filter((col, index) => usedColumns.indexOf(col) !== index))];
+    if (duplicates.length) return void setStatus(`同じ列が複数項目に設定されています：${duplicates.join(', ')}`, 'error');
 
     const now = firebase.firestore.FieldValue.serverTimestamp();
     await mappingRef.set({ hasHeader, columns, updatedAt: now, updatedBy: window.appContext.uid }, { merge: true });
@@ -68,6 +84,6 @@
       operatedAt: now,
     });
 
-    statusEl.textContent = 'CSVマッピングを保存しました。';
+    setStatus('CSVマッピングを保存しました。', 'success');
   });
 })();
