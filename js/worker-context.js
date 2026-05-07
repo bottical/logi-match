@@ -1,6 +1,7 @@
 (function(){
   window.workerContext = { workers:[], selectedWorker:null };
-  function key(tid){ return `logimatch:selectedWorker:${tid||'default'}`; }
+  function key(clientId){ return `logimatch:selectedWorker:${clientId||'default'}`; }
+  function resolveClientId(id){ return window.appContext?.clientId || window.appContext?.tenantId || id || 'default'; }
   window.setWorkerList = function(workers){
     window.workerContext.workers = Array.isArray(workers) ? workers : [];
   };
@@ -33,12 +34,12 @@
   };
   window.restoreSelectedWorker = function(tenantId){
     try{
-      const raw=localStorage.getItem(key(tenantId));
+      const raw=localStorage.getItem(key(resolveClientId(tenantId)));
       if(!raw) return null;
       const saved=JSON.parse(raw);
       const w=window.workerContext.workers.find(x=>String(x.workerId)===String(saved?.workerId))||null;
       if(!w){
-        localStorage.removeItem(key(tenantId));
+        localStorage.removeItem(key(resolveClientId(tenantId)));
         window.workerContext.selectedWorker=null;
         return null;
       }
@@ -46,7 +47,7 @@
       return w;
     }catch(e){
       console.warn('[workerContext] restore failed',e);
-      localStorage.removeItem(key(tenantId));
+      localStorage.removeItem(key(resolveClientId(tenantId)));
       window.workerContext.selectedWorker=null;
       return null;
     }
@@ -55,13 +56,13 @@
     const w=window.workerContext.workers.find(x=>String(x.workerId)===String(workerId))||null;
     window.workerContext.selectedWorker=w;
     if(w){
-      localStorage.setItem(key(tenantId),JSON.stringify({
+      localStorage.setItem(key(resolveClientId(tenantId)),JSON.stringify({
         workerId:w.workerId,
         workerName:w.workerName||'',
         workerCode:w.workerCode||''
       }));
     }else{
-      localStorage.removeItem(key(tenantId));
+      localStorage.removeItem(key(resolveClientId(tenantId)));
     }
     return w;
   };

@@ -99,3 +99,26 @@ html.shell-embedded-root .wrapper {
 html.shell-embedded-root body { background: #fff; }
 
 .detail-row--excluded{background:#f1f3f5;color:#7a7f87}
+
+.worker-required-panel { margin: 12px 0 16px; }
+.worker-required-card { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 16px; border:1px solid #facc15; background:#fffbeb; border-radius:12px; }
+.worker-required-card strong { display:block; font-size:16px; }
+.worker-required-card p { margin:4px 0 0; color:#92400e; font-size:13px; }
+.worker-required-actions { display:flex; align-items:center; gap:8px; }
+.worker-required-actions select { min-width:220px; height:38px; }
+.worker-required-actions button { height:38px; padding:0 14px; }
+.worker-required-message { color:#b91c1c; font-weight:700; }
+
+@media (max-width: 900px) {
+  .worker-required-card { flex-direction:column; align-items:stretch; }
+  .worker-required-actions { flex-direction:column; align-items:stretch; }
+  .worker-required-actions select,
+  .worker-required-actions button { width:100%; }
+}
+
+.worker-required-panel--compact { margin: 0 0 10px; }
+.worker-required-panel--compact .worker-required-card { padding:8px 10px; border-color:#d8dde3; background:#f8fafc; border-radius:8px; }
+.worker-required-panel--compact .worker-required-card strong { font-size:13px; }
+.worker-required-panel--compact .worker-required-card p { display:none; }
+.worker-required-panel--compact .worker-required-actions select { min-width:180px; height:32px; }
+.worker-required-panel--compact .worker-required-actions button { height:32px; padding:0 10px; }
