@@ -61,6 +61,18 @@
     });
   }
 
+  console.info('[workers] module loaded', {
+    hasInitializeAppContext: typeof window.initializeAppContext === 'function',
+    hasFirestorePaths: !!window.firestorePaths,
+    hasDb: !!window.db,
+  });
+
+  if (typeof window.initializeAppContext !== 'function') {
+    console.error('[workers] initializeAppContext is missing. Check script order in workers.html.');
+    statusEl.textContent = '初期化に失敗しました。app-init.js の読み込み順を確認してください。';
+    return;
+  }
+
   await window.initializeAppContext('workers');
   window.renderSidebar?.();
   if (!window.permissions?.canViewAdminMenu(window.appContext)) {
