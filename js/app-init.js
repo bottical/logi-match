@@ -19,6 +19,10 @@
         const app = firebase.app();
         const db = firebase.firestore();
         const auth = firebase.auth();
+
+        window.db = db;
+        window.auth = auth;
+
         const user = await window.authApi.waitForAuthUser();
         if (!user) {
           location.href = './login.html';
@@ -26,21 +30,17 @@
         }
 
         const tenant = await window.tenantContext.resolve(user);
-        if (!tenant || !tenant.clientId) throw new Error('[app-init] tenant/clientId could not be resolved');
-
-        const paths = window.firestorePaths.createFirestorePaths(db, tenant.clientId);
+        const paths = window.firestorePaths.createFirestorePaths(tenant);
         const role = tenant.role || tenant.userRole || 'worker';
 
-        window.db = db;
-        window.auth = auth;
         window.appContext = {
           ...(window.appContext || {}),
           ...(tenant || {}),
           uid: user.uid,
           userId: user.uid,
           email: user.email || null,
-          clientId: tenant.clientId,
-          tenantId: tenant.tenantId || tenant.clientId,
+          clientId: tenant.clientId || null,
+          tenantId: tenant.tenantId || tenant.clientId || null,
           role,
           db,
           auth,
@@ -55,8 +55,8 @@
           uid: user.uid,
           userId: user.uid,
           tenant,
-          tenantId: tenant.tenantId || tenant.clientId,
-          clientId: tenant.clientId,
+          tenantId: tenant.tenantId || tenant.clientId || null,
+          clientId: tenant.clientId || null,
           role,
           paths,
         };

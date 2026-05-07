@@ -1,8 +1,30 @@
 (function () {
-  function normalizeRole(role) {
-    const value = String(role || '').trim();
-    if (value === 'operator') return 'worker';
-    return value;
+  const pagePermissions = {
+    inspection: ['admin', 'worker'],
+    'master-import': ['admin'],
+    'import-history': ['admin'],
+    'unstarted-list': ['admin', 'worker'],
+    'completed-list': ['admin'],
+    'result-download': ['admin'],
+    workers: ['admin'],
+    'csv-mapping': ['admin'],
+    'internal-users': ['systemOwner'],
+    'internal-workers': ['systemOwner'],
+  };
+
+  function normalizeRole(value) {
+    if (!value) return null;
+    const role = String(value).trim();
+    if (role === 'operator') return 'worker';
+    if (role === 'owner') return 'admin';
+    if (['admin', 'worker', 'systemOwner'].includes(role)) return role;
+    return null;
+  }
+
+  function hasPageAccess(pageId, role) {
+    const normalized = normalizeRole(role);
+    const allowed = pagePermissions[pageId] || [];
+    return allowed.includes(normalized);
   }
 
   function isAdmin(ctx) {
@@ -13,20 +35,16 @@
     return normalizeRole(ctx?.role) === 'systemOwner';
   }
 
-  function canViewAdminMenu(ctx) { return isAdmin(ctx) || isSystemOwner(ctx); }
-  function canDownloadResults(ctx) { return canViewAdminMenu(ctx); }
-  function canUnlockCurrent(ctx) { return canViewAdminMenu(ctx); }
-  function canResetCompleted(ctx) { return canViewAdminMenu(ctx); }
-  function canEditCsvMapping(ctx) { return canViewAdminMenu(ctx); }
-
   window.permissions = {
+    pagePermissions,
     normalizeRole,
+    hasPageAccess,
     isAdmin,
     isSystemOwner,
-    canViewAdminMenu,
-    canDownloadResults,
-    canUnlockCurrent,
-    canResetCompleted,
-    canEditCsvMapping,
+    canViewAdminMenu: isAdmin,
+    canDownloadResults: isAdmin,
+    canUnlockCurrent: isAdmin,
+    canResetCompleted: isAdmin,
+    canEditCsvMapping: isAdmin,
   };
 })();
