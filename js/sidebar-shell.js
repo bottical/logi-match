@@ -63,7 +63,7 @@ export function initSidebar(ctx = window.appContext, pageId = getCurrentPageId()
   const email = ctx?.email || '';
 
   sidebar.innerHTML = `
-    <div class="sidebar-brand"><div class="sidebar-title">検品システム</div></div>
+    <div class="sidebar-brand"><div class="sidebar-title">ロジマッチ</div></div>
     <div class="sidebar-user">${tenantLabel}<br>${email}</div>
     <nav class="sidebar-nav">
       ${visibleItems.map((item) => `<a href="${item.hash}" class="sidebar-link" data-page="${item.id}">${item.label}</a>`).join('')}
