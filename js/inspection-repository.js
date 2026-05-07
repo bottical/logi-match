@@ -285,6 +285,106 @@
     });
   };
 
+  
+  window.suspendInspectionWork = async function suspendInspectionWork(input) {
+    const { workId, workerId, workerName, userId, deviceId, pickingNo, suspendedBy } = input || {};
+    if (!workId) throw new Error('WORK_ID_MISSING');
+    const workRef = inspectionWorkRef(workId);
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const batch = window.db.batch();
+    batch.set(workRef, {
+      status: 'suspended',
+      suspendedAt: now,
+      suspended_at: now,
+      currentWorkerId: null,
+      currentWorkerName: null,
+      currentDeviceId: null,
+      lockAcquiredAt: null,
+      current_worker_id: null,
+      current_worker_name: null,
+      current_device_id: null,
+      lock_acquired_at: null,
+      updated_at: now,
+      updatedAt: now,
+      work: {
+        status: 'suspended',
+        suspended_at: now,
+        suspendedAt: now,
+        suspended_by: suspendedBy || userId || null,
+        suspendedBy: suspendedBy || userId || null,
+        currentWorkerId: null,
+        currentWorkerName: null,
+        currentDeviceId: null,
+        lockAcquiredAt: null,
+        current_worker_id: null,
+        current_worker_name: null,
+        current_device_id: null,
+        lock_acquired_at: null,
+        updatedAt: now,
+        updated_at: now
+      }
+    }, { merge: true });
+    const opRef = operationLogsRef().doc();
+    batch.set(opRef, { logId: opRef.id, clientId: getClientId(), operationType: 'suspend', targetType: 'inspectionWork', targetId: workId, workerId: workerId || null, workerNameSnapshot: workerName || null, userId: userId || null, deviceId: deviceId || null, detail: { pickingNo: pickingNo || null }, operatedAt: now });
+    await batch.commit();
+  };
+
+  window.resetInspectionWork = async function resetInspectionWork(input) {
+    const { workId, workerId, workerName, userId, deviceId, pickingNo } = input || {};
+    if (!workId) throw new Error('WORK_ID_MISSING');
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const workRef = inspectionWorkRef(workId);
+    const itemsRef = inspectionItemsRef(workId);
+    const itemSnaps = await itemsRef.get();
+    const workSnap = await workRef.get();
+    const details = Array.isArray((workSnap.data() || {}).details) ? (workSnap.data() || {}).details : [];
+    const batch = window.db.batch();
+    batch.set(workRef, {
+      status: 'unstarted',
+      completed_flag: false,
+      completedFlag: false,
+      actualQtyTotal: 0,
+      actual_qty_total: 0,
+      currentWorkerId: null,
+      currentWorkerName: null,
+      currentDeviceId: null,
+      lockAcquiredAt: null,
+      current_worker_id: null,
+      current_worker_name: null,
+      current_device_id: null,
+      lock_acquired_at: null,
+      startedAt: null,
+      started_at: null,
+      completedAt: null,
+      completed_at: null,
+      suspendedAt: null,
+      suspended_at: null,
+      completedWorkerId: null,
+      completedWorkerName: null,
+      updated_at: now,
+      updatedAt: now,
+      work: {
+        status: 'unstarted', completed_flag: false, completedFlag: false, actualQtyTotal: 0, actual_qty_total: 0,
+        currentWorkerId: null, currentWorkerName: null, currentDeviceId: null, lockAcquiredAt: null,
+        current_worker_id: null, current_worker_name: null, current_device_id: null, lock_acquired_at: null,
+        startedAt: null, started_at: null, completedAt: null, completed_at: null, suspendedAt: null, suspended_at: null,
+        completedWorkerId: null, completedWorkerName: null, updatedAt: now, updated_at: now
+      },
+      details: details.map((d) => {
+        const inspectionRequired = !(d?.inspectionRequired === false || d?.inspection_required === false || Number(d?.target_qty ?? d?.targetQty ?? 0) === 0);
+        return { ...d, actual_qty: 0, actualQty: 0, completed_flag: false, completedFlag: false, itemStatus: inspectionRequired ? 'unstarted' : 'excluded' };
+      })
+    }, { merge: true });
+    itemSnaps.forEach((doc) => {
+      const data = doc.data() || {};
+      const inspectionRequired = !(data?.inspectionRequired === false || data?.inspection_required === false || Number(data?.target_qty ?? data?.targetQty ?? 0) === 0);
+      batch.set(doc.ref, { actualQty: 0, actual_qty: 0, completed_flag: false, completedFlag: false, itemStatus: inspectionRequired ? 'unstarted' : 'excluded', updatedAt: now, updated_at: now }, { merge: true });
+    });
+    const opRef = operationLogsRef().doc();
+    batch.set(opRef, { logId: opRef.id, clientId: getClientId(), operationType: 'reset', targetType: 'inspectionWork', targetId: workId, workerId: workerId || null, workerNameSnapshot: workerName || null, userId: userId || null, deviceId: deviceId || null, detail: { pickingNo: pickingNo || null }, operatedAt: now });
+    await batch.commit();
+  };
+
   window.loadInspectionState = async function loadInspectionState(workId) {
     if (!window.db) {
       throw new Error('Firestore is not initialized.');
