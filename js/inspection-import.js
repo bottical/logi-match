@@ -53,9 +53,10 @@
       const clientId=window.appContext.clientId||window.appContext.tenantId;
       const mapping=await loadCsvMapping(clientId);
       const useMapping=Boolean(mapping?.columns);
+      const inspectSlipNo=Boolean(mapping?.options?.inspectSlipNo);
       const map=useMapping?convertMappingKeysToLegacyMap(mapping):mapHeaders(rows[0]);
       const dataRows=useMapping?(mapping.hasHeader?rows.slice(1):rows):rows.slice(1);
-      const miss=requiredBase.filter(k=>map[k]===undefined); const hasBarcodeHeader = map.main_barcode !== undefined || map.alt_code !== undefined; if(miss.length || !hasBarcodeHeader) return fail((useMapping?'CSVマッピング必須項目不足: ':'必須ヘッダ不足: ')+[...miss, ...(!hasBarcodeHeader ? ['main_barcode または alt_code'] : [])].join(','));
+      const miss=requiredBase.filter(k=>map[k]===undefined); const hasBarcodeHeader = map.main_barcode !== undefined || map.alt_code !== undefined; if(inspectSlipNo&&map.slip_no===undefined) miss.push('slip_no'); if(miss.length || !hasBarcodeHeader) return fail((useMapping?'CSVマッピング必須項目不足: ':'必須ヘッダ不足: ')+[...miss, ...(!hasBarcodeHeader ? ['main_barcode または alt_code'] : [])].join(','));
       const valid=[];
       dataRows.forEach((r,i)=>{ const n=(useMapping&&mapping.hasHeader===false)?i+1:i+2; const o=rowObj(r,map);
         const ng=(m)=>errors.push({row:n,reason:m,summary:`${o.work_id||''}/${o.product_id||''}/${o.product_name||''}`});
@@ -63,6 +64,7 @@
         if(!o.main_barcode && !o.alt_code) return ng('メインバーコード・代替コードが空');
         const q=Number(o.target_qty); if(!o.target_qty || !Number.isFinite(q) || q<=0) return ng('指示数が不正');
         if((o.excluded_flag||'').toUpperCase()==='ON' || o.excluded_flag==='1') return ng('対象外フラグON');
+        if(inspectSlipNo && !o.slip_no) return ng('伝票番号が空');
         o.product_id=o.product_id||`AUTO-${o.work_id}-${n}`; o.product_name=o.product_name||''; o.recipient_name=o.recipient_name||''; o.target_qty=q; o.scan_code=o.main_barcode||o.alt_code; o.row_number=n; valid.push(o);
       });
       if(!valid.length) return fail('正常行が1件もありません');
@@ -79,7 +81,15 @@
         // 設計仕様では inspectionWorks/{workId}/items/{itemId} のサブコレクション構造を想定している。
         // 現行実装は検品実行画面との互換性のため、details 配列を inspectionWorks ドキュメント内に保持している。
         // サブコレクション化は repository 層の移行計画を作成してから実施する。
-        const details=[...dmap.values()]; const importDate=nowIso(); const importDateKey=dateKey();
+        const details=[...dmap.values()];
+        if(inspectSlipNo){
+          const slipMap=new Map();
+          items.forEach(it=>{const slip=String(it.slip_no||'').trim(); if(!slip) return; if(!slipMap.has(slip)) slipMap.set(slip,{detail_id:`${safe(workId)}_SLIP_${String(slipMap.size+1).padStart(3,'0')}`,work_id:workId,itemType:'slip',scan_code:'',main_barcode:'',alt_code:'',jan:'',alternativeCode:'',slipNo:slip,product_name:'伝票番号確認',target_qty:1,actual_qty:0,completed_flag:false,inspectionRequired:true,itemStatus:'unstarted',scanKeys:[{type:'slipNo',value:slip}],rowNumbers:[],warningMessages:[],created_at:nowIso(),updated_at:nowIso()});
+            slipMap.get(slip).rowNumbers.push(it.row_number);
+          });
+          details.push(...slipMap.values());
+        }
+        const importDate=nowIso(); const importDateKey=dateKey();
         batch.set(ref,{work_id:workId,status:'unstarted',import_date:importDate,import_date_key:importDateKey,deleted_flag:false,work:{work_id:workId,batch_id:batchId,recipient_name:items[0].recipient_name||'',import_date:importDate,import_date_key:importDateKey,shipment_date:items[0].shipment_date||null,status:'unstarted',current_worker_id:null,current_started_at:null,completed_flag:false,started_at:null,completed_at:null,suspended_at:null,reset_count:0,deleted_flag:false,created_at:importDate,updated_at:importDate},details,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:window.firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
         writes++; await commitBatchIfNeeded(); successWorks++; successDetails+=details.length;
       }

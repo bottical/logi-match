@@ -44,6 +44,7 @@
   const doc = await mappingRef.get();
   const data = doc.exists ? doc.data() : {};
   document.getElementById('hasHeader').checked = Boolean(data.hasHeader ?? true);
+  document.getElementById('inspectSlipNo').checked = Boolean(data.options?.inspectSlipNo);
   const cols = data.columns || {};
   fields.forEach((key) => { document.getElementById(key).value = normalizeColumnValue(cols[key] || ''); });
 
@@ -51,6 +52,7 @@
     event.preventDefault();
     const hasHeader = document.getElementById('hasHeader').checked;
     const columns = {};
+    const inspectSlipNo = document.getElementById('inspectSlipNo').checked;
     fields.forEach((key) => {
       const normalized = normalizeColumnValue(document.getElementById(key).value);
       columns[key] = normalized;
@@ -63,6 +65,7 @@
     if (!columns.pickingNo) return void setStatus('ピッキングNo.は必須です。', 'error');
     if (!columns.quantity) return void setStatus('数量は必須です。', 'error');
     if (!columns.jan && !columns.alternativeCode) return void setStatus('JANまたは代替コードのいずれかは必須です。', 'error');
+    if (inspectSlipNo && !columns.slipNo) return void setStatus('伝票番号を検品対象にする場合、伝票番号列は必須です。', 'error');
 
     const usedColumns = fields.filter((key) => columns[key]).map((key) => columns[key]);
     const duplicates = [...new Set(usedColumns.filter((col, index) => usedColumns.indexOf(col) !== index))];
@@ -70,7 +73,7 @@
 
     try {
       const now = firebase.firestore.FieldValue.serverTimestamp();
-      await mappingRef.set({ hasHeader, columns, updatedAt: now, updatedBy: window.appContext.uid }, { merge: true });
+      await mappingRef.set({ hasHeader, columns, options: { inspectSlipNo }, updatedAt: now, updatedBy: window.appContext.uid }, { merge: true });
 
       const opRef = window.firestorePaths.operationLogs(clientId).doc();
       await opRef.set({
@@ -81,7 +84,7 @@
         targetId: 'current',
         userId: window.appContext.uid,
         deviceId: localStorage.getItem('deviceId') || null,
-        detail: { columns, hasHeader },
+        detail: { columns, hasHeader, options: { inspectSlipNo } },
         operatedAt: now,
       });
 

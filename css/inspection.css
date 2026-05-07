@@ -294,3 +294,6 @@ html.shell-embedded-root body { background: #fff; }
     max-width: 64px;
   }
 }
+
+.csv-mapping-option-note{margin:0;color:#334155;font-size:13px}
+.inspection-row--slip td{background:#eef6ff !important;}
