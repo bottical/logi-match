@@ -1,6 +1,6 @@
 (function(){
   const $=id=>document.getElementById(id);
-  if (!$('importButton')) return; $('importButton').disabled=true; (async()=>{try{await window.initializeAppContext('master-import');window.renderSidebar?.();$('importButton').disabled=false;}catch(e){console.error('[master-import] init failed',e);$('importStatus').textContent='初期化に失敗しました。';}})();
+  if (!$('importButton')) return; $('importButton').disabled=true; (async()=>{try{const ctx = await window.appInit.ready(document.body.dataset.page);console.debug("[app-init]",{page:document.body.dataset.page,hasAppInit:!!window.appInit,hasFirestorePaths:!!window.firestorePaths,clientId:ctx.clientId,role:ctx.role,pathKeys:Object.keys(ctx.paths||{})});window.renderSidebar?.();$('importButton').disabled=false;}catch(e){console.error('[master-import] init failed',e);$('importStatus').textContent='初期設定に失敗しました。ログイン状態またはテナント設定を確認してください。';}})();
   const db=()=>window.db;
   const requiredBase=['work_id','target_qty'];
   const nowIso=()=>new Date().toISOString();

@@ -1,54 +1,78 @@
-(function(){
-  function toErrorMessage(errorCode){
-    const map = {
-      USER_NOT_REGISTERED: 'ログインユーザーの初期設定に失敗しました。Firebase Auth ユーザーが有効か確認してください。',
-      CLIENT_ID_MISSING: 'ログインユーザーに clientId が設定されていません。',
-      ROLE_MISSING: 'ログインユーザーに role が設定されていません。',
-      USER_INACTIVE: 'このユーザーは無効化されています。',
-      CLIENT_NOT_FOUND: '紐づくクライアント設定が存在しません。',
-      CLIENT_INACTIVE: '紐づくクライアント設定が無効化されています。',
-      CSV_MAPPING_MISSING: 'CSVマッピング設定が未作成です。',
-      BOOTSTRAP_NOT_AVAILABLE: 'このログインユーザーの初期設定は利用できません。管理者に確認してください。',
-      BOOTSTRAP_EMAIL_MISMATCH: 'ログインメールアドレスが事前登録情報と一致しません。管理者に確認してください。',
-      USER_ALREADY_EXISTS: 'このログインユーザーは既に登録済みです。設定状態を確認してください。'
-    };
-    return map[errorCode] || '利用権限またはテナント設定に問題があります。管理者に確認してください。';
+(function () {
+  let readyPromise = null;
+
+  function requireFn(owner, name, label) {
+    if (!owner || typeof owner[name] !== 'function') {
+      throw new Error(`${label}.${name} is not available`);
+    }
+    return owner[name].bind(owner);
   }
 
-  window.requireAppContext = async function requireAppContext(pageId){
-    try {
-      const user = await window.requireLogin();
+  async function ready(pageId) {
+    if (!readyPromise) {
+      readyPromise = (async () => {
+        if (!window.firebase) throw new Error('[app-init] Firebase SDK is not loaded');
+        if (!window.authApi || typeof window.authApi.waitForAuthUser !== 'function') throw new Error('[app-init] authApi.waitForAuthUser is not available');
+        if (!window.tenantContext || typeof window.tenantContext.resolve !== 'function') throw new Error('[app-init] tenantContext.resolve is not available');
+        if (!window.firestorePaths || typeof window.firestorePaths.createFirestorePaths !== 'function') throw new Error('[app-init] firestorePaths.createFirestorePaths is not available');
 
-      if (typeof window.bootstrapTenantIfNeeded === 'function') {
-        await window.bootstrapTenantIfNeeded(user);
-      }
+        const app = firebase.app();
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const user = await window.authApi.waitForAuthUser();
+        if (!user) {
+          location.href = './login.html';
+          throw new Error('[app-init] unauthenticated');
+        }
 
-      await window.loadTenantContext(user);
-      window.appContext = {
-        ...window.appContext,
-        db: window.db,
-        auth: window.auth,
-        user,
-        userId: user.uid,
-        email: user.email || null
-      };
+        const tenant = await window.tenantContext.resolve(user);
+        if (!tenant || !tenant.clientId) throw new Error('[app-init] tenant/clientId could not be resolved');
 
-      const clientId = window.appContext?.clientId;
-      const pagesRequireCsvMapping = ['master-import', 'csv-mapping'];
-      if (clientId && pagesRequireCsvMapping.includes(pageId)) {
-        const csvMapping = await window.firestorePaths.csvMappingCurrent(clientId).get();
-        if (!csvMapping.exists) throw new Error('CSV_MAPPING_MISSING');
-      }
+        const paths = window.firestorePaths.createFirestorePaths(db, tenant.clientId);
+        const role = tenant.role || tenant.userRole || 'worker';
 
-      window.checkPagePermission(pageId);
-      return window.appContext;
-    } catch (e) {
-      if (e.message === 'AUTH_REQUIRED') location.href = './login.html';
-      else if (e.message === 'PERMISSION_DENIED') { alert('この画面にアクセスできません。検品実行画面へ移動します。'); location.href='./inspection.html'; }
-      else { console.error('[app-init] failed', e); alert(toErrorMessage(e.message)); location.href='./login.html'; }
-      throw e;
+        window.db = db;
+        window.auth = auth;
+        window.appContext = {
+          ...(window.appContext || {}),
+          ...(tenant || {}),
+          uid: user.uid,
+          userId: user.uid,
+          email: user.email || null,
+          clientId: tenant.clientId,
+          tenantId: tenant.tenantId || tenant.clientId,
+          role,
+          db,
+          auth,
+          paths,
+        };
+
+        return {
+          app,
+          db,
+          auth,
+          user,
+          uid: user.uid,
+          userId: user.uid,
+          tenant,
+          tenantId: tenant.tenantId || tenant.clientId,
+          clientId: tenant.clientId,
+          role,
+          paths,
+        };
+      })();
     }
-  };
 
+    const ctx = await readyPromise;
+    if (window.checkPagePermission && pageId) window.checkPagePermission(pageId);
+    return ctx;
+  }
+
+  window.requireAppContext = async function requireAppContext(pageId) {
+    await ready(pageId);
+    return window.appContext;
+  };
   window.initializeAppContext = window.requireAppContext;
+
+  window.appInit = { ready, requireFn };
 })();

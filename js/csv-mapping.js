@@ -8,8 +8,17 @@
     return /^[A-Z]+$/.test(value);
   }
 
-  await window.initializeAppContext('csv-mapping');
-  window.renderSidebar?.();
+  let ctx;
+  try {
+    ctx = await window.appInit.ready(document.body.dataset.page);
+    console.debug('[app-init]', { page: document.body.dataset.page, hasAppInit: !!window.appInit, hasFirestorePaths: !!window.firestorePaths, clientId: ctx.clientId, role: ctx.role, pathKeys: Object.keys(ctx.paths || {}) });
+    window.renderSidebar?.();
+  } catch (error) {
+    console.error('[csv-mapping] init failed', error);
+    if (statusEl) statusEl.textContent = '初期設定に失敗しました。ログイン状態またはテナント設定を確認してください。';
+    if (form) form.hidden = true;
+    return;
+  }
 
   if (!window.permissions?.canEditCsvMapping(window.appContext)) {
     statusEl.textContent = 'この機能は管理者向け機能です。現在実装中です。';

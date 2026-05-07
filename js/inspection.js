@@ -83,14 +83,14 @@ const beforeQty=getActualQty(detail), targetQty=getTargetQty(detail);if(beforeQt
 async function init(){resetToPickingNoInput();$('headerUserName')?.remove();
  const workerSelect=$('workerSelect'),requiredPanel=$('workerRequiredPanel'),requiredSelect=$('workerRequiredSelect'),requiredMessage=$('workerRequiredMessage');let workers=[];
  const updateWorkerUi=(worker,{showPanel=false,message=''}={})=>{ $('workerDisplayName').textContent=worker?.workerName||'未選択'; const title=$('workerRequiredTitle'); const desc=$('workerRequiredDescription'); const shouldShowPanel=!worker||showPanel||isShellEmbedded(); if(requiredPanel){ requiredPanel.hidden=!shouldShowPanel; requiredPanel.classList.toggle('worker-required-panel--compact',Boolean(worker)&&isShellEmbedded()&&!showPanel); } if(title) title.textContent=worker?`作業者：${worker.workerName}`:'作業者を選択してください'; if(desc) desc.textContent=worker?'作業者を変更する場合は選択してください。':'検品を開始する前に、今回の作業者を選択してください。'; if(requiredMessage) requiredMessage.textContent=message||''; $('scanCodeInput').disabled=true; $('scanQtyInput').disabled=true; if(worker){ setJudge('idle','ピッキングNo.待ち','ピッキングNo.を入力してください'); render(); focusPickingNoInput(); }else{ setJudge('warning','作業者を選択してください','作業者を選択してください'); render(); } };
- const applyWorkerSelection=(workerId,{fromChange=false}={})=>{ const worker=window.selectWorker(window.appContext.tenantId,workerId); if(workerSelect) workerSelect.value=worker?.workerId||''; if(requiredSelect) requiredSelect.value=worker?.workerId||''; if(!worker){ updateWorkerUi(null,{showPanel:true,message:'作業者を選択してください。'}); (requiredSelect||workerSelect)?.focus(); return null; } updateWorkerUi(worker,{showPanel:false,message:''}); return worker; };
- try{ workers=await window.loadWorkers(window.appContext.tenantId);}catch(error){ console.error('[inspection] failed to load workers', error); setJudge('error','作業者一覧の取得に失敗しました。','Firestoreの workers パス設定を確認してください。'); render(); return; }
+ const applyWorkerSelection=(workerId,{fromChange=false}={})=>{ const worker=window.selectWorker(window.appContext.clientId||window.appContext.tenantId,workerId); if(workerSelect) workerSelect.value=worker?.workerId||''; if(requiredSelect) requiredSelect.value=worker?.workerId||''; if(!worker){ updateWorkerUi(null,{showPanel:true,message:'作業者を選択してください。'}); (requiredSelect||workerSelect)?.focus(); return null; } updateWorkerUi(worker,{showPanel:false,message:''}); return worker; };
+ try{ workers=await window.loadWorkers(window.appContext.clientId||window.appContext.tenantId);}catch(error){ console.error('[inspection] failed to load workers', error); setJudge('error','作業者一覧の取得に失敗しました。','Firestoreの workers パス設定を確認してください。'); render(); return; }
  if(window.setWorkerList)window.setWorkerList(workers);
  if(!workers.length){ $('workerDisplayName').textContent='未登録'; if(requiredPanel) requiredPanel.hidden=false; if(requiredMessage) requiredMessage.textContent='有効な作業者が登録されていません。管理者に確認してください。'; if(requiredSelect) requiredSelect.hidden=true; $('scanCodeInput').disabled=true; $('scanQtyInput').disabled=true; setJudge('warning','有効な作業者が登録されていません。','管理者に確認してください。'); render(); return; }
  if(requiredSelect) requiredSelect.hidden=false;
  const requiredConfirmButton=$('workerRequiredConfirmButton');
  if(requiredConfirmButton) requiredConfirmButton.hidden=false;
- const restored=window.restoreSelectedWorker?.(window.appContext.tenantId); const selectedId=restored?.workerId||'';
+ const restored=window.restoreSelectedWorker?.(window.appContext.clientId||window.appContext.tenantId); const selectedId=restored?.workerId||'';
  populateWorkerSelect(workerSelect,workers,selectedId); populateWorkerSelect(requiredSelect,workers,selectedId);
  if(restored?.workerId){ applyWorkerSelection(restored.workerId); }else{ updateWorkerUi(null,{showPanel:true,message:''}); }
  const confirmSelection=()=>applyWorkerSelection((requiredSelect?.value||workerSelect?.value||'').trim());
@@ -105,4 +105,35 @@ $('loadPickingButton').addEventListener('click',()=>loadPickingNo($('pickingNoIn
 $('pauseButton').addEventListener('click',()=>confirmAction('この作業を中断します。よろしいですか？',async()=>{state.work.status='suspended';state.work.suspended_at=new Date().toISOString();state.work.current_worker_id=null;state.work.current_worker_name=null;state.work.current_login_uid=null;state.work.current_login_email=null;const ok=await persistAsync('suspend');if(ok)resetToPickingNoInput();}));
 $('resetButton').addEventListener('click',()=>{if(state.work.status==='completed'){setJudge('warning','この画面から完了済み検品はリセットできません。','管理者が検品完了一覧からリセットしてください。');focusPickingNoInput();return;}confirmAction('このピッキングNo.の検品実績をリセットします。\n読取済み数量も初期化されます。\n本当に実行しますか？',async()=>{state.details.forEach(d=>{d.actual_qty=0;d.completed_flag=false;});state.work.status='unstarted';state.work.completed_flag=false;state.work.current_worker_id=null;state.work.current_worker_name=null;state.work.current_login_uid=null;state.work.current_login_email=null;const ok=await persistAsync('reset');if(ok)resetToPickingNoInput();});});
 setInterval(()=>{if(state.work.work_id&&state.work.status==='current')render();},1000);
-(async()=>{await window.initializeAppContext('inspection');window.renderSidebar?.();await init();})();})();
+(async () => {
+  try {
+    const ctx = await window.appInit.ready(document.body.dataset.page);
+    console.debug('[app-init]', {
+      page: document.body.dataset.page,
+      hasAppInit: !!window.appInit,
+      hasFirestorePaths: !!window.firestorePaths,
+      clientId: ctx.clientId,
+      role: ctx.role,
+      pathKeys: Object.keys(ctx.paths || {}),
+    });
+    window.renderSidebar?.();
+    await init();
+  } catch (error) {
+    console.error('[inspection] init failed', error);
+
+    if (typeof setJudge === 'function') {
+      setJudge('error', '初期設定に失敗しました', 'ログイン状態またはテナント設定を確認してください。');
+    }
+
+    const syncStatus = document.getElementById('syncStatus');
+    if (syncStatus) {
+      syncStatus.textContent = '初期化失敗';
+      syncStatus.className = 'inspection-status-badge inspection-status-badge--error';
+    }
+
+    const mainMsg = document.getElementById('mainMsgTxt');
+    const subMsg = document.getElementById('judgeSubText');
+    if (mainMsg) mainMsg.textContent = '初期設定に失敗しました';
+    if (subMsg) subMsg.textContent = 'ログイン状態またはテナント設定を確認してください。';
+  }
+})();})();

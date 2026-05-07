@@ -56,7 +56,8 @@ async function renderRoute() {
   content.innerHTML = '';
 
   try {
-    const ctx = await window.initializeAppContext(pageId);
+    const ctx = await window.appInit.ready(pageId);
+    
     console.info('[router] context loaded', {
       pageId,
       role: ctx?.role,
