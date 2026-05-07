@@ -7,34 +7,74 @@
     <script>
       (function () {
         var params = new URLSearchParams(location.search);
-        if (params.get('shell') === '1') {
-          document.documentElement.classList.add('shell-embedded-root');
+        var shellMode = params.get('shell') === '1';
+        if (!shellMode) {
+          location.replace('./#csv-mapping');
+          return;
         }
+        document.documentElement.classList.add('shell-embedded-root');
       })();
     </script>
-    <link rel="stylesheet" href="./css/app.css" />
+    <link rel="stylesheet" href="css/inspection.css" />
   </head>
-  <body data-page="csv-mapping">
-    <aside id="sidebarHost"></aside>
-    <main class="page-main">
-      <h1>CSVマッピング設定</h1>
-      <p id="mappingStatus"></p>
-      <p class="help-text">列はExcel形式で指定してください。例：A, B, C</p>
-      <form id="mappingForm">
-        <label><input type="checkbox" id="hasHeader" /> ヘッダーあり</label>
-        <div><label>ピッキングNo.<input id="pickingNo" /></label></div>
-        <div><label>JAN<input id="jan" /></label></div>
-        <div><label>代替コード<input id="alternativeCode" /></label></div>
-        <div><label>商品名<input id="productName" /></label></div>
-        <div><label>数量<input id="quantity" /></label></div>
-        <div><label>お届け先名<input id="destinationName" /></label></div>
-        <div><label>伝票番号<input id="slipNo" /></label></div>
-        <div><label>出荷日<input id="shipDate" /></label></div>
-        <div><label>荷主名<input id="shipperName" /></label></div>
-        <div><label>ロケーション<input id="location" /></label></div>
-        <button type="submit">保存</button>
-      </form>
-    </main>
+  <body class="inspection-page" data-page="csv-mapping">
+    <div class="wrapper">
+      <header class="main-header">
+        <ul class="navbar-nav">
+          <li class="nav-item">
+            <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="メニューを開閉">☰</button>
+          </li>
+          <li class="nav-item">
+            <span class="nav-link">CSVマッピング設定</span>
+          </li>
+        </ul>
+      </header>
+
+      <aside id="sidebarHost"></aside>
+
+      <div class="content-wrapper">
+        <main class="portal">
+          <section class="panel csv-mapping-panel">
+            <h1 class="csv-mapping-title">CSVマッピング設定</h1>
+            <p id="mappingStatus" class="status-message" aria-live="polite"></p>
+            <div class="csv-mapping-help">
+              <p>列はExcel形式で指定してください。例：A, B, C, AA</p>
+              <p>ピッキングNo.と数量は必須です。</p>
+              <p>JANまたは代替コードのどちらか一方は必ず設定してください。</p>
+              <p>商品名・お届け先名は推奨項目のため、未設定でも取込可能ですが、CSV取込時に警告対象になります。</p>
+            </div>
+            <form id="mappingForm" class="csv-mapping-form">
+              <label class="csv-mapping-header-toggle"><input type="checkbox" id="hasHeader" /> ヘッダーあり</label>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>項目</th>
+                      <th>必須区分</th>
+                      <th>列指定</th>
+                      <th>説明</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>ピッキングNo.</td><td><span class="mapping-badge mapping-badge--required">必須</span></td><td><input id="pickingNo" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>作業単位キー。未設定の場合、CSV取込不可</td></tr>
+                    <tr><td>JAN</td><td><span class="mapping-badge mapping-badge--conditional">条件付き必須</span></td><td><input id="jan" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>JANまたは代替コードのいずれか必須</td></tr>
+                    <tr><td>代替コード</td><td><span class="mapping-badge mapping-badge--conditional">条件付き必須</span></td><td><input id="alternativeCode" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>JANまたは代替コードのいずれか必須</td></tr>
+                    <tr><td>商品名</td><td><span class="mapping-badge mapping-badge--recommended">推奨</span></td><td><input id="productName" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>空欄でも取込可。ただし警告対象</td></tr>
+                    <tr><td>数量</td><td><span class="mapping-badge mapping-badge--required">必須</span></td><td><input id="quantity" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>正の整数または0。未設定の場合、CSV取込不可</td></tr>
+                    <tr><td>お届け先名</td><td><span class="mapping-badge mapping-badge--recommended">推奨</span></td><td><input id="destinationName" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>空欄でも取込可。ただし警告対象</td></tr>
+                    <tr><td>伝票番号</td><td><span class="mapping-badge mapping-badge--optional">任意</span></td><td><input id="slipNo" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>参照情報</td></tr>
+                    <tr><td>出荷日</td><td><span class="mapping-badge mapping-badge--optional">任意</span></td><td><input id="shipDate" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>参照情報</td></tr>
+                    <tr><td>荷主名</td><td><span class="mapping-badge mapping-badge--optional">任意</span></td><td><input id="shipperName" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>参照情報</td></tr>
+                    <tr><td>ロケーション</td><td><span class="mapping-badge mapping-badge--optional">任意</span></td><td><input id="location" autocomplete="off" inputmode="text" placeholder="例：A" /></td><td>参照情報</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <button type="submit" class="primary-action">保存</button>
+            </form>
+          </section>
+        </main>
+      </div>
+    </div>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="./js/firebase-config.js"></script><script src="./js/auth.js"></script><script src="./js/auth-guard.js"></script><script src="./js/internal-auth.js"></script><script src="./js/tenant-context.js"></script><script src="./js/bootstrap-tenant.js"></script><script src="./js/permissions.js"></script><script src="./js/firestore-paths.js"></script><script src="./js/app-init.js"></script><script src="./js/sidebar.js"></script><script src="./js/csv-mapping.js"></script>
   </body>

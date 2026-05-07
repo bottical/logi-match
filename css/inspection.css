@@ -107,3 +107,19 @@ html.shell-embedded-root .wrapper {
 html.shell-embedded-root body { background: #fff; }
 
 .detail-row--excluded{background:#f1f3f5;color:#7a7f87}
+
+.csv-mapping-panel { display:grid; gap:12px; }
+.csv-mapping-title { margin:0; font-size:22px; }
+.status-message { margin:0; padding:10px 12px; border-radius:4px; font-weight:700; display:none; }
+.status-message--error { display:block; background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+.status-message--success { display:block; background:#e8f7ee; color:#166534; border:1px solid #bbf7d0; }
+.csv-mapping-help { background:#f8fafc; border:1px solid #d8dde3; border-radius:4px; padding:10px 12px; color:#334155; font-size:13px; }
+.csv-mapping-help p { margin:4px 0; }
+.csv-mapping-form { display:grid; gap:12px; }
+.csv-mapping-header-toggle { font-weight:700; display:inline-flex; align-items:center; gap:8px; }
+.csv-mapping-form .table-wrap input { width:100%; min-width:100px; }
+.mapping-badge { display:inline-flex; align-items:center; border-radius:999px; padding:2px 8px; font-size:12px; font-weight:700; white-space:nowrap; }
+.mapping-badge--required { background:#fee2e2; color:#991b1b; }
+.mapping-badge--conditional { background:#ffedd5; color:#9a3412; }
+.mapping-badge--recommended { background:#e0f2fe; color:#075985; }
+.mapping-badge--optional { background:#f3f4f6; color:#374151; }
