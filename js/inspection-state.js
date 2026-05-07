@@ -15,5 +15,6 @@ window.inspectionState = {
   currentItems: [],
   scanIndex: new Map(),
   pendingWrites: [],
+  scanWriteQueue: Promise.resolve(),
   isSyncBlocked: false
 };
