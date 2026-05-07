@@ -24,6 +24,18 @@ const routes = {
 
 let currentCleanup = null;
 
+const framePageIds = new Set([
+  'inspection',
+  'master-import',
+  'import-history',
+  'unstarted-list',
+  'completed-list',
+  'result-download',
+  'workers',
+  'csv-mapping',
+  'internal-users',
+]);
+
 async function renderRoute() {
   const pageId = getCurrentPageId();
   const renderer = routes[pageId];
@@ -40,6 +52,7 @@ async function renderRoute() {
   const content = document.getElementById('appContent');
   if (!content) return;
 
+  content.classList.toggle('is-frame-content', framePageIds.has(pageId));
   content.innerHTML = '';
 
   try {
@@ -59,6 +72,7 @@ async function renderRoute() {
     if (typeof cleanup === 'function') currentCleanup = cleanup;
   } catch (error) {
     console.error('[router] render failed:', error);
+    content.classList.remove('is-frame-content');
     content.innerHTML = `
       <section class="page-section">
         <h1>画面の表示に失敗しました</h1>

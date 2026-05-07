@@ -4,11 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>作業者一覧</title>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search);
+        if (params.get('shell') === '1') {
+          document.documentElement.classList.add('shell-embedded-root');
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="./css/app.css" />
   </head>
   <body data-page="workers">
     <aside id="sidebarHost"></aside>
-    <main>
+    <main class="page-main">
       <h1>作業者一覧</h1>
       <p id="workersStatus"></p>
       <table>
