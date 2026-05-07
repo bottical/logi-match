@@ -425,6 +425,46 @@
     };
   };
 
+
+  window.commitScanResult = async function commitScanResult(payload) {
+    if (!window.db || !window.firebase?.firestore) throw new Error('Firestore is not initialized.');
+    const { workId, pickingNo, itemId, scannedCode, inputQty, beforeQty, afterQty, targetQty, workCompleted, worker, deviceId } = payload || {};
+    if (!workId) throw new Error('WORK_ID_MISSING');
+    if (!itemId) throw new Error('ITEM_ID_MISSING');
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const workRef = inspectionWorkRef(workId);
+    return window.db.runTransaction(async (tx) => {
+      const snap = await tx.get(workRef);
+      if (!snap.exists) throw new Error('WORK_NOT_FOUND');
+      const data = snap.data() || {};
+      const work = data.work || {};
+      const details = Array.isArray(data.details) ? data.details : [];
+      const idx = details.findIndex((d) => String(d.detail_id || d.itemId || '') === String(itemId));
+      if (idx < 0) throw new Error('ITEM_NOT_FOUND');
+      const item = details[idx];
+      const currentQty = Number(item?.actual_qty ?? item?.actualQty ?? 0);
+      if (Math.abs(currentQty - Number(beforeQty || 0)) > 0.0001) throw new Error('QTY_MISMATCH');
+      const nextQty = Number(afterQty || 0);
+      if (Object.prototype.hasOwnProperty.call(item, 'actual_qty')) item.actual_qty = nextQty; else item.actualQty = nextQty;
+      item.completed_flag = nextQty >= Number(targetQty || 0);
+      item.completedFlag = item.completed_flag;
+      item.itemStatus = item.completed_flag ? 'completed' : (nextQty > 0 ? 'partial' : 'unstarted');
+      const active = details.filter((d) => !(d?.inspectionRequired === false || d?.inspection_required === false || Number(d?.target_qty ?? d?.targetQty ?? 0) === 0));
+      work.actualQtyTotal = active.reduce((n, d) => n + Number(d?.actual_qty ?? d?.actualQty ?? 0), 0);
+      work.status = workCompleted ? 'completed' : 'current';
+      work.completed_flag = !!workCompleted;
+      work.lastActivityAt = new Date().toISOString();
+      if (workCompleted) { work.completedAt = now; work.completed_at = now; }
+      tx.set(workRef, { details, work, status: work.status, updated_at: now, updatedAt: now }, { merge: true });
+      const logRef = scanLogsRef().doc();
+      tx.set(logRef, {
+        logId: logRef.id, clientId: getClientId(), workId, pickingNo: pickingNo || work.pickingNo || work.picking_no || workId, scannedCode: String(scannedCode || ''),
+        codeType: 'unknown', result: 'success', errorMessage: '', inputQty: Number(inputQty || 0), beforeQty: Number(beforeQty || 0), afterQty: Number(afterQty || 0), targetQty: Number(targetQty || 0),
+        workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userId: worker?.userId || null, deviceId: deviceId || null, scannedAt: now
+      });
+    });
+  };
+
   // scanLogs are treated as scan event logs in the initial release.
   // They do not strictly guarantee state update persistence in the same atomic transaction.
   window.appendScanLog = async function appendScanLog(workId, log) {
