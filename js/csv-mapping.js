@@ -68,22 +68,27 @@
     const duplicates = [...new Set(usedColumns.filter((col, index) => usedColumns.indexOf(col) !== index))];
     if (duplicates.length) return void setStatus(`同じ列が複数項目に設定されています：${duplicates.join(', ')}`, 'error');
 
-    const now = firebase.firestore.FieldValue.serverTimestamp();
-    await mappingRef.set({ hasHeader, columns, updatedAt: now, updatedBy: window.appContext.uid }, { merge: true });
+    try {
+      const now = firebase.firestore.FieldValue.serverTimestamp();
+      await mappingRef.set({ hasHeader, columns, updatedAt: now, updatedBy: window.appContext.uid }, { merge: true });
 
-    const opRef = window.firestorePaths.operationLogs(clientId).doc();
-    await opRef.set({
-      logId: opRef.id,
-      clientId,
-      operationType: 'mapping_update',
-      targetType: 'csvMapping',
-      targetId: 'current',
-      userId: window.appContext.uid,
-      deviceId: localStorage.getItem('deviceId') || null,
-      detail: { columns, hasHeader },
-      operatedAt: now,
-    });
+      const opRef = window.firestorePaths.operationLogs(clientId).doc();
+      await opRef.set({
+        logId: opRef.id,
+        clientId,
+        operationType: 'mapping_update',
+        targetType: 'csvMapping',
+        targetId: 'current',
+        userId: window.appContext.uid,
+        deviceId: localStorage.getItem('deviceId') || null,
+        detail: { columns, hasHeader },
+        operatedAt: now,
+      });
 
-    setStatus('CSVマッピングを保存しました。', 'success');
+      setStatus('CSVマッピングを保存しました。', 'success');
+    } catch (error) {
+      console.error('[csv-mapping] save failed', error);
+      setStatus('CSVマッピングの保存に失敗しました。権限または通信状態を確認してください。', 'error');
+    }
   });
 })();
