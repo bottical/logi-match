@@ -3,23 +3,87 @@
     return state?.work?.work_id;
   }
 
-  function requireClientId() {
+  function getClientId() {
     const clientId = window.appContext?.clientId || window.appContext?.tenantId;
     if (!clientId) throw new Error('CLIENT_ID_MISSING');
     return clientId;
   }
 
-  function clientRef() { return window.firestorePaths.clientRoot(requireClientId()); }
+  function getDb() {
+    if (window.db) return window.db;
+    if (window.firebase) return firebase.firestore();
+    throw new Error('DB_UNAVAILABLE');
+  }
+
+  function getPaths() {
+    const clientId = getClientId();
+    if (window.appContext?.paths) return window.appContext.paths;
+    if (window.firestorePaths?.createFirestorePaths) {
+      return window.firestorePaths.createFirestorePaths(getDb(), clientId);
+    }
+    throw new Error('FIRESTORE_PATHS_MISSING');
+  }
+
+  function clientRef() {
+    const clientId = getClientId();
+    if (window.firestorePaths?.clientRoot) {
+      return window.firestorePaths.clientRoot(clientId);
+    }
+    const paths = getPaths();
+    if (typeof paths.client === 'function') return paths.client();
+    if (typeof paths.clientRoot === 'function') return paths.clientRoot();
+    return getDb().collection('clients').doc(clientId);
+  }
+
+  function inspectionWorksRef() {
+    const clientId = getClientId();
+    if (window.firestorePaths?.inspectionWorks) {
+      return window.firestorePaths.inspectionWorks(clientId);
+    }
+    const paths = getPaths();
+    if (typeof paths.inspectionWorks === 'function') return paths.inspectionWorks();
+    return clientRef().collection('inspectionWorks');
+  }
 
   function inspectionWorkRef(workId) {
-    return clientRef().collection('inspectionWorks').doc(workId);
+    if (!workId) throw new Error('WORK_ID_MISSING');
+    const clientId = getClientId();
+    if (window.firestorePaths?.inspectionWork) {
+      return window.firestorePaths.inspectionWork(clientId, workId);
+    }
+    const paths = getPaths();
+    if (typeof paths.inspectionWork === 'function') return paths.inspectionWork(workId);
+    return inspectionWorksRef().doc(workId);
+  }
+
+  function inspectionItemsRef(workId) {
+    if (!workId) throw new Error('WORK_ID_MISSING');
+    const clientId = getClientId();
+    if (window.firestorePaths?.inspectionItems) {
+      return window.firestorePaths.inspectionItems(clientId, workId);
+    }
+    const paths = getPaths();
+    if (typeof paths.inspectionItems === 'function') return paths.inspectionItems(workId);
+    return inspectionWorkRef(workId).collection('items');
   }
 
   function scanLogsRef() {
+    const clientId = getClientId();
+    if (window.firestorePaths?.scanLogs) {
+      return window.firestorePaths.scanLogs(clientId);
+    }
+    const paths = getPaths();
+    if (typeof paths.scanLogs === 'function') return paths.scanLogs();
     return clientRef().collection('scanLogs');
   }
 
   function operationLogsRef() {
+    const clientId = getClientId();
+    if (window.firestorePaths?.operationLogs) {
+      return window.firestorePaths.operationLogs(clientId);
+    }
+    const paths = getPaths();
+    if (typeof paths.operationLogs === 'function') return paths.operationLogs();
     return clientRef().collection('operationLogs');
   }
 
@@ -79,7 +143,7 @@
       const opRef = operationLogsRef().doc();
       batch.set(opRef, {
         logId: opRef.id,
-        clientId: requireClientId(),
+        clientId: getClientId(),
         operationType: meta.reason,
         targetType: 'inspectionWork',
         targetId: workId,
@@ -215,8 +279,8 @@
       tx.set(workRef,{details,work,status:work.status,updated_at:now,updatedAt:now,...(completed?{completedAt:completedAtValue,completed_at:completedAtValue,completedWorkerId:work.completedWorkerId||workerId||null,completedWorkerName:work.completedWorkerName||workerName||null}:{} )},{merge:true});
       const logRef = scanLogsRef().doc();
       const logId = logRef.id;
-      tx.set(logRef,{logId,clientId:requireClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
-      if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:requireClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||null},operatedAt:now}); }
+      tx.set(logRef,{logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
+      if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:getClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||null},operatedAt:now}); }
       return {ok:true,detailId:d.detail_id,state:{work,details}};
     });
   };
@@ -267,6 +331,6 @@
     if (!workId) throw new Error('work_id is missing.');
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
     const ref=scanLogsRef().doc();
-    await ref.set({ logId: ref.id, clientId: requireClientId(), workId, ...log, scannedAt: log.scannedAt || now });
+    await ref.set({ logId: ref.id, clientId: getClientId(), workId, ...log, scannedAt: log.scannedAt || now });
   };
 })();
