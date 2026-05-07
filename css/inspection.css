@@ -128,3 +128,37 @@ html.shell-embedded-root body { background: #fff; }
 
 #detailTable td.cell-jan{white-space:nowrap;font-family:monospace;}
 @media (max-width: 768px){.inspection-input-bar{flex-direction:column}.inspection-input-bar .input-group,.inspection-input-bar .qty-group{width:100%;flex:1 1 auto}}
+
+
+.inspection-input-bar .input-group {
+  min-width: 0;
+}
+
+.inspection-input-bar .input-group input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+.inspection-input-bar .input-group button {
+  flex: 0 0 auto;
+}
+
+.inspection-input-bar label {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.inspection-input-bar .qty-group input {
+  flex: 0 0 90px;
+  width: 90px;
+  max-width: 90px;
+}
+
+.inspection-input-bar .readonly-value {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
