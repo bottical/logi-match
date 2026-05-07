@@ -3,6 +3,13 @@ const state=window.inspectionState,$=id=>document.getElementById(id),statusMap={
 const DETAIL_TABLE_COLUMNS=[{key:'type',label:'種別',type:'itemType'},{key:'status',label:'状態',type:'state'},{key:'main_barcode',label:'コード',type:'jan'},{key:'product_name',label:'商品名',fallbackKeys:['productName','itemName','商品名']},{key:'target_qty',label:'予定数量',type:'target'},{key:'actual_qty',label:'実績数量',type:'actual'},{key:'remaining',label:'残数',type:'remaining'}];
 const blank=()=>({work:{work_id:null,recipient_name:'',status:'unstarted',current_worker_id:null,completed_flag:false},details:[],recentScan:null,lastScannedCode:'',syncStatus:'idle',lock:{locked:false,reason:null,worker_id:null,started_at:null},qtyMode:{enabled:true,qty:1},startedAt:null,lastCompletedSummary:''});
 const normalize=v=>String(v||'').trim();
+const setTruncatedText=(id,value)=>{
+ const el=$(id);
+ if(!el) return;
+ const text=value==null||String(value).trim()===''?'-':String(value).trim();
+ el.textContent=text;
+ el.title=text==='-'?'':text;
+};
 const getScanKeys=d=>{
  const keys=[];
  const push=(type,value)=>{const v=normalize(value);if(v)keys.push({type,value:v});};
@@ -33,11 +40,13 @@ function applyOptimisticScan({detail,qty}){const beforeQty=getActualQty(detail),
 
 function render(){
  const activeDetails=state.details.filter(d=>!isExcludedDetail(d));const excludedCount=state.details.length-activeDetails.length;const skuDone=activeDetails.filter(d=>d.completed_flag).length,qa=activeDetails.reduce((n,d)=>n+getActualQty(d),0),qt=activeDetails.reduce((n,d)=>n+getTargetQty(d),0);
- $('recipientName').textContent=display(state.work.recipient_name);$('workStatus').textContent=statusMap[state.work.status]||state.work.status;
+ setTruncatedText('destinationNameDisplay',pickValue(state.work,['destinationName','recipientName','recipient_name','deliveryName','お届け先名']));$('workStatus').textContent=statusMap[state.work.status]||state.work.status;
  $('skuProgress').textContent=`${skuDone} / ${activeDetails.length}`;$('qtyProgress').textContent=`${qa} / ${qt}`;$('judgeProgressText').textContent=state.details.length?`数量 ${qa} / ${qt}`:'';
- $('shipperName').textContent=display(pickValue(state.work,['shipperName','ownerName','clientName','荷主様名']));
- $('customerName').textContent=display(pickValue(state.work,['recipientName','recipient_name','customerName','deliveryName','得意先名','お届け先名']));
- $('sentCode').textContent=display(state.lastScannedCode||state.recentScan?.scanCode);
+ setTruncatedText('slipNoDisplay',pickValue(state.work,['slipNo','slip_no','伝票番号']));
+ setTruncatedText('shipDateDisplay',pickValue(state.work,['shipDate','ship_date','shipment_date','出荷日']));
+ setTruncatedText('shipperNameDisplay',pickValue(state.work,['shipperName','shipper_name','ownerName','clientName','荷主名','荷主様名']));
+ setTruncatedText('locationDisplay',pickValue(state.work,['location','ロケーション']));
+ setTruncatedText('sentCode',state.lastScannedCode||state.recentScan?.scanCode);
  $('workerDisplayName').textContent=selectedWorker()?.workerName||'未選択';
  $('workIdDisplay').textContent=display(state.work.work_id);
  const elapsed=state.startedAt?Math.max(0,Math.floor((Date.now()-state.startedAt)/1000)):0;$('elapsedTime').textContent=secToClock(elapsed);
@@ -52,7 +61,7 @@ function render(){
  const head=$('detailTableHead');const body=$('detailTableBody');head.replaceChildren();body.replaceChildren();
  DETAIL_TABLE_COLUMNS.forEach(c=>{const th=document.createElement('th');th.textContent=c.label;head.appendChild(th);});
  sorted.forEach(d=>{const tr=document.createElement('tr');const excluded=isExcludedDetail(d);let cls='detail-row--pending';if(excluded){cls='detail-row--excluded';}else if(state.recentScan?.detail?.detail_id===d.detail_id){cls='detail-row--recent';}else if(d.error_flag){cls='detail-row--error';}else if(d.completed_flag){cls='detail-row--done';}else if(getActualQty(d)>0){cls='detail-row--partial';}tr.className=`${cls}${d.itemType==='slip'?' inspection-row--slip':''}`;
- DETAIL_TABLE_COLUMNS.forEach(c=>{const td=document.createElement('td');if(c.type==='state')td.textContent=excluded?'検品対象外':(d.completed_flag?'完了':(getActualQty(d)>0?'途中':'未着手'));else if(c.type==='target')td.textContent=String(getTargetQty(d));else if(c.type==='actual')td.textContent=String(getActualQty(d));else if(c.type==='remaining')td.textContent=excluded?'-':String(getTargetQty(d)-getActualQty(d));else if(c.type==='itemType'){td.textContent=d.itemType==='slip'?'伝票番号':'商品';}else if(c.type==='jan'){const jan=String(pickValue(d,['main_barcode','scan_code','barcode','JAN','jan','alt_code','alternativeCode','slipNo'])||'').trim();td.textContent=jan||'-';td.classList.add('cell-jan');}else td.textContent=display(pickValue(d,[c.key,...(c.fallbackKeys||[])]));tr.appendChild(td);});body.appendChild(tr);});
+ DETAIL_TABLE_COLUMNS.forEach(c=>{const td=document.createElement('td');if(c.type==='state')td.textContent=excluded?'検品対象外':(d.completed_flag?'完了':(getActualQty(d)>0?'途中':'未着手'));else if(c.type==='target')td.textContent=String(getTargetQty(d));else if(c.type==='actual')td.textContent=String(getActualQty(d));else if(c.type==='remaining')td.textContent=excluded?'-':String(getTargetQty(d)-getActualQty(d));else if(c.type==='itemType'){td.textContent=d.itemType==='slip'?'伝票番号':'商品';}else if(c.type==='jan'){const jan=String(pickValue(d,['main_barcode','scan_code','barcode','JAN','jan','alt_code','alternativeCode','slipNo'])||'').trim();td.textContent=jan||'-';td.classList.add('cell-jan');}else {const text=display(pickValue(d,[c.key,...(c.fallbackKeys||[])]));td.textContent=text;if(c.key==='product_name'){td.title=text==='-'?'':text;td.classList.add('cell-product-name');}}tr.appendChild(td);});body.appendChild(tr);});
  const summaryPanel=$('lastCompletedSummaryPanel');const summaryText=$('lastCompletedSummaryText');if(summaryPanel&&summaryText){summaryPanel.hidden=!state.lastCompletedSummary;summaryText.textContent=state.lastCompletedSummary||'';}
 }
 async function safeAppendScanLog(workId,log){try{await window.appendScanLog(workId,log);}catch(e){console.error('[scanLog] failed',e);}}
