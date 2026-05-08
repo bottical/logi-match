@@ -30,7 +30,7 @@
       <main class="portal">
         <section class="panel result-download-panel">
           <h1 class="result-download-title">検品実績ダウンロード</h1>
-          <p class="result-download-lead">出力したいCSVを選択してください。大量データ取得を防ぐため、各CSVには日付条件が必要です。</p>
+          <p class="result-download-lead">出力したいCSVを選択してください。各CSVには日付条件が必要です。</p>
 
           <div class="download-card-grid">
             <section class="download-card" aria-labelledby="completedCsvTitle">
@@ -40,7 +40,6 @@
               </div>
               <p class="download-card-description">検品完了した作業を、ピッキングNo.単位のサマリーとして出力します。</p>
               <dl class="download-card-meta">
-                <div><dt>対象データ</dt><dd>inspectionWorks</dd></div>
                 <div><dt>日付条件</dt><dd>検品完了日（完了作業ログCSV・明細CSVに使用）</dd></div>
               </dl>
               <div class="filter-row">
@@ -65,10 +64,8 @@
               </div>
               <p class="download-card-description">商品ごとの予定数量・実績数量・差異を出力します。検品対象外行も含めます。</p>
               <dl class="download-card-meta">
-                <div><dt>対象データ</dt><dd>inspectionWorks/{workId}/items</dd></div>
-                <div><dt>日付条件</dt><dd>検品完了日（上の入力欄を使用）</dd></div>
+                <div><dt>日付条件</dt><dd>検品完了日</dd></div>
               </dl>
-              <p class="filter-help">明細CSVは、上の「検品完了日」条件を使用します。itemsサブコレクションを参照するため読み取り数が増えます。</p>
               <button id="exportDetailCsvButton" type="button" class="primary-action">明細CSVを出力</button>
             </section>
 
@@ -79,7 +76,6 @@
               </div>
               <p class="download-card-description">JAN・代替コードの読み取り履歴を1スキャン単位で出力します。対象外・過剰スキャンなどのエラーも含みます。</p>
               <dl class="download-card-meta">
-                <div><dt>対象データ</dt><dd>scanLogs</dd></div>
                 <div><dt>日付条件</dt><dd>スキャン日</dd></div>
               </dl>
               <div class="filter-row">
