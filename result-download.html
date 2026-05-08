@@ -1,1 +1,122 @@
-<!doctype html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>検品実績DL</title><script>(function(){var params=new URLSearchParams(location.search);var shellMode=params.get('shell')==='1';if(!shellMode){location.replace('./#result-download');return;}document.documentElement.classList.add('shell-embedded-root');})();</script><link rel="stylesheet" href="css/inspection.css"></head><body class="inspection-page" data-page="result-download"><div class="wrapper"><nav class="main-header"><ul class="navbar-nav"><li class="nav-item"><button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="メニューを開閉">☰</button></li><li class="nav-item"><span class="nav-link">検品実績DL</span></li></ul></nav><aside id="sidebarHost"></aside><div class="content-wrapper"><main class="portal"><section class="panel"><div class="filters"><input id="logFrom" type="date"><input id="logTo" type="date"><input id="completedFrom" type="date"><input id="completedTo" type="date"><select id="statusFilter"><option value="">全て</option><option value="unstarted">未着手</option><option value="current">作業中</option><option value="suspended">中断</option><option value="completed">完了</option></select><button id="exportButton">CSV出力</button></div><p id="downloadStatus"></p></section></main></div></div><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script><script src="js/firebase-config.js"></script><script src="js/auth.js"></script><script src="js/auth-guard.js"></script><script src="js/internal-auth.js"></script><script src="js/tenant-context.js"></script><script src="js/bootstrap-tenant.js"></script><script src="js/permissions.js"></script><script src="js/firestore-paths.js"></script><script src="js/app-init.js"></script><script src="js/sidebar.js"></script><script src="js/result-download.js"></script></body></html>
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>検品実績DL</title>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var shellMode = params.get('shell') === '1';
+      if (!shellMode) {
+        location.replace('./#result-download');
+        return;
+      }
+      document.documentElement.classList.add('shell-embedded-root');
+    })();
+  </script>
+  <link rel="stylesheet" href="css/inspection.css">
+</head>
+<body class="inspection-page" data-page="result-download">
+  <div class="wrapper">
+    <nav class="main-header">
+      <ul class="navbar-nav">
+        <li class="nav-item"><button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="メニューを開閉">☰</button></li>
+        <li class="nav-item"><span class="nav-link">検品実績DL</span></li>
+      </ul>
+    </nav>
+    <aside id="sidebarHost"></aside>
+    <div class="content-wrapper">
+      <main class="portal">
+        <section class="panel result-download-panel">
+          <h1 class="result-download-title">検品実績ダウンロード</h1>
+          <p class="result-download-lead">出力したいCSVを選択してください。大量データ取得を防ぐため、各CSVには日付条件が必要です。</p>
+
+          <div class="download-card-grid">
+            <section class="download-card" aria-labelledby="completedCsvTitle">
+              <div class="download-card-header">
+                <h2 id="completedCsvTitle">完了作業ログCSV</h2>
+                <span class="download-card-badge">ピッキングNo.単位</span>
+              </div>
+              <p class="download-card-description">検品完了した作業を、ピッキングNo.単位のサマリーとして出力します。</p>
+              <dl class="download-card-meta">
+                <div><dt>対象データ</dt><dd>inspectionWorks</dd></div>
+                <div><dt>日付条件</dt><dd>検品完了日（完了作業ログCSV・明細CSVに使用）</dd></div>
+              </dl>
+              <div class="filter-row">
+                <label class="filter-field" for="completedFrom">
+                  <span>検品完了日（開始）</span>
+                  <input id="completedFrom" type="date">
+                </label>
+                <span class="filter-separator">〜</span>
+                <label class="filter-field" for="completedTo">
+                  <span>検品完了日（終了）</span>
+                  <input id="completedTo" type="date">
+                </label>
+              </div>
+              <p class="filter-help">未指定での全件出力はできません。片方だけ指定した場合は、その1日分を出力します。</p>
+              <button id="exportCompletedCsvButton" type="button" class="primary-action">完了作業ログCSVを出力</button>
+            </section>
+
+            <section class="download-card" aria-labelledby="detailCsvTitle">
+              <div class="download-card-header">
+                <h2 id="detailCsvTitle">明細CSV</h2>
+                <span class="download-card-badge">商品明細単位</span>
+              </div>
+              <p class="download-card-description">商品ごとの予定数量・実績数量・差異を出力します。検品対象外行も含めます。</p>
+              <dl class="download-card-meta">
+                <div><dt>対象データ</dt><dd>inspectionWorks/{workId}/items</dd></div>
+                <div><dt>日付条件</dt><dd>検品完了日（上の入力欄を使用）</dd></div>
+              </dl>
+              <p class="filter-help">明細CSVは、上の「検品完了日」条件を使用します。itemsサブコレクションを参照するため読み取り数が増えます。</p>
+              <button id="exportDetailCsvButton" type="button" class="primary-action">明細CSVを出力</button>
+            </section>
+
+            <section class="download-card download-card--heavy" aria-labelledby="scanLogCsvTitle">
+              <div class="download-card-header">
+                <h2 id="scanLogCsvTitle">全スキャンログCSV</h2>
+                <span class="download-card-badge download-card-badge--warning">データ量多</span>
+              </div>
+              <p class="download-card-description">JAN・代替コードの読み取り履歴を1スキャン単位で出力します。対象外・過剰スキャンなどのエラーも含みます。</p>
+              <dl class="download-card-meta">
+                <div><dt>対象データ</dt><dd>scanLogs</dd></div>
+                <div><dt>日付条件</dt><dd>スキャン日</dd></div>
+              </dl>
+              <div class="filter-row">
+                <label class="filter-field" for="logFrom">
+                  <span>スキャン日（開始）</span>
+                  <input id="logFrom" type="date">
+                </label>
+                <span class="filter-separator">〜</span>
+                <label class="filter-field" for="logTo">
+                  <span>スキャン日（終了）</span>
+                  <input id="logTo" type="date">
+                </label>
+              </div>
+              <p class="filter-help">スキャンログは件数が多いため、必ずスキャン日を指定してください。片方だけ指定した場合は、その1日分を出力します。</p>
+              <button id="exportScanLogCsvButton" type="button" class="primary-action">全スキャンログCSVを出力</button>
+            </section>
+          </div>
+
+          <p id="downloadStatus" class="status-message" aria-live="polite"></p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/auth-guard.js"></script>
+  <script src="js/internal-auth.js"></script>
+  <script src="js/tenant-context.js"></script>
+  <script src="js/bootstrap-tenant.js"></script>
+  <script src="js/permissions.js"></script>
+  <script src="js/firestore-paths.js"></script>
+  <script src="js/app-init.js"></script>
+  <script src="js/sidebar.js"></script>
+  <script src="js/result-download.js"></script>
+</body>
+</html>
