@@ -300,3 +300,133 @@ html.shell-embedded-root body { background: #fff; }
 
 .csv-mapping-option-note{margin:0;color:#334155;font-size:13px}
 .inspection-row--slip td{background:#eef6ff !important;}
+
+.result-download-panel {
+  max-width: 1200px;
+}
+
+.result-download-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.result-download-lead {
+  margin: 0 0 20px;
+  color: #64748b;
+}
+
+.download-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.download-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.download-card--heavy {
+  border-color: #f59e0b;
+  background: #fffbeb;
+}
+
+.download-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.download-card-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.download-card-badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.download-card-badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.download-card-description {
+  margin: 0;
+  color: #334155;
+  line-height: 1.6;
+}
+
+.download-card-meta {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.download-card-meta div {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 8px;
+}
+
+.download-card-meta dt {
+  color: #64748b;
+}
+
+.download-card-meta dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.filter-row {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-field {
+  display: grid;
+  gap: 4px;
+}
+
+.filter-field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.filter-help {
+  margin: 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+.filter-separator {
+  padding-bottom: 8px;
+  color: #64748b;
+}
+
+.result-download-panel .status-message {
+  margin-top: 16px;
+  display: block;
+  min-height: 20px;
+}
+
+@media (max-width: 960px) {
+  .download-card-grid {
+    grid-template-columns: 1fr;
+  }
+}
