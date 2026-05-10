@@ -1,29 +1,50 @@
 (function () {
-  function createFirestorePaths(ctx) {
-    if (!ctx) throw new Error('[firestore-paths] ctx is required');
-    const db = window.db || firebase.firestore();
-    function requireClientId() {
-      const clientId = ctx.clientId || ctx.tenantId;
-      if (!clientId) throw new Error('[firestore-paths] clientId is required for client data path');
-      return clientId;
+  function createFirestorePaths(ctxOrDb, maybeClientId) {
+    let db = window.db || firebase.firestore();
+    let ctx = ctxOrDb;
+    if (ctxOrDb && typeof ctxOrDb.collection === 'function') {
+      db = ctxOrDb;
+      ctx = { clientId: maybeClientId, tenantId: maybeClientId };
     }
-    function clientDoc(clientId = requireClientId()) { return db.collection('clients').doc(clientId); }
-    function clientCollection(name, clientId = requireClientId()) { return clientDoc(clientId).collection(name); }
+    if (!ctx) throw new Error('[firestore-paths] ctx is required');
+    const clientId = ctx.clientId || ctx.tenantId;
+    if (!clientId) throw new Error('[firestore-paths] clientId is required for client data path');
+
+    const clientRoot = db.collection('clients').doc(clientId);
+    const csvMapping = clientRoot.collection('csvMapping').doc('current');
+    const importBatches = clientRoot.collection('importBatches');
+    const inspectionWorks = clientRoot.collection('inspectionWorks');
+    const scanLogs = clientRoot.collection('scanLogs');
+    const operationLogs = clientRoot.collection('operationLogs');
+    const workers = clientRoot.collection('workers');
 
     return {
-      clientId: ctx.clientId || ctx.tenantId || null,
-      clientDoc,
-      client: clientDoc,
-      clientRoot: clientDoc,
-      users: (clientId) => clientCollection('users', clientId),
-      workers: (clientId) => clientCollection('workers', clientId),
-      csvMappingCurrent: (clientId) => clientDoc(clientId || requireClientId()).collection('csvMapping').doc('current'),
-      importBatches: (clientId) => clientCollection('importBatches', clientId),
-      inspectionWorks: (clientId) => clientCollection('inspectionWorks', clientId),
-      inspectionWork: (workId, clientId) => clientCollection('inspectionWorks', clientId).doc(workId),
-      inspectionItems: (workId, clientId) => clientCollection('inspectionWorks', clientId).doc(workId).collection('items'),
-      scanLogs: (clientId) => clientCollection('scanLogs', clientId),
-      operationLogs: (clientId) => clientCollection('operationLogs', clientId),
+      clientId,
+      clientRoot,
+      csvMapping,
+      importBatches,
+      inspectionWorks,
+      inspectionWork: (workId) => inspectionWorks.doc(workId),
+      inspectionItems: (workId) => inspectionWorks.doc(workId).collection('items'),
+      scanLogs,
+      operationLogs,
+      workers,
+      // backward compatible aliases
+      clientDoc: () => clientRoot,
+      client: () => clientRoot,
+      users: () => clientRoot.collection('users'),
+      csvMappingCurrent: () => csvMapping,
+      importBatchesCollection: () => importBatches,
+      inspectionWorksCollection: () => inspectionWorks,
+      scanLogsCollection: () => scanLogs,
+      operationLogsCollection: () => operationLogs,
+      workersCollection: () => workers,
+      clientRootRef: () => clientRoot,
+      importBatchesRef: () => importBatches,
+      inspectionWorksRef: () => inspectionWorks,
+      scanLogsRef: () => scanLogs,
+      operationLogsRef: () => operationLogs,
+      workersRef: () => workers,
       userTenant: (uid) => db.collection('userTenants').doc(uid),
       systemUser: (uid) => db.collection('systemUsers').doc(uid),
     };
@@ -35,18 +56,19 @@
 
   window.firestorePaths = {
     createFirestorePaths,
-    clientRoot: (clientId) => fromClientId(clientId).clientRoot(),
-    client: Object.assign((clientId) => fromClientId(clientId).client(), {
-      workers: (clientId) => fromClientId(clientId).workers(),
+    clientRoot: (clientId) => fromClientId(clientId).clientRoot,
+    client: Object.assign((clientId) => fromClientId(clientId).clientRoot, {
+      workers: (clientId) => fromClientId(clientId).workers,
     }),
     users: (clientId) => fromClientId(clientId).users(),
-    workers: (clientId) => fromClientId(clientId).workers(),
-    csvMappingCurrent: (clientId) => fromClientId(clientId).csvMappingCurrent(),
-    importBatches: (clientId) => fromClientId(clientId).importBatches(),
-    inspectionWorks: (clientId) => fromClientId(clientId).inspectionWorks(),
+    workers: (clientId) => fromClientId(clientId).workers,
+    csvMappingCurrent: (clientId) => fromClientId(clientId).csvMapping,
+    importBatches: (clientId) => fromClientId(clientId).importBatches,
+    inspectionWorks: (clientId) => fromClientId(clientId).inspectionWorks,
     inspectionWork: (clientId, workId) => fromClientId(clientId).inspectionWork(workId),
     inspectionItems: (clientId, workId) => fromClientId(clientId).inspectionItems(workId),
-    scanLogs: (clientId) => fromClientId(clientId).scanLogs(),
-    operationLogs: (clientId) => fromClientId(clientId).operationLogs(),
+    inspectionWorkItems: (clientId, workId) => fromClientId(clientId).inspectionItems(workId),
+    scanLogs: (clientId) => fromClientId(clientId).scanLogs,
+    operationLogs: (clientId) => fromClientId(clientId).operationLogs,
   };
 })();

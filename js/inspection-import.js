@@ -6,7 +6,21 @@
   const nowIso=()=>new Date().toISOString();
   const dateKey=()=>new Date().toISOString().slice(0,10);
   const safe=s=>String(s||'').replace(/[^\w-]/g,'_');
-  const BATCH_LIMIT=400;
+  const BATCH_LIMIT=450;
+
+  function sanitizeWorkId(pickingNo){
+    return String(pickingNo||'').trim().replace(/\//g,'_');
+  }
+
+  async function deleteItemsByChunk(itemsRef){
+    let snap=await itemsRef.limit(450).get();
+    while(!snap.empty){
+      let b=db().batch(); let c=0;
+      snap.docs.forEach(doc=>{b.delete(doc.ref); c+=1;});
+      await b.commit();
+      snap=await itemsRef.limit(450).get();
+    }
+  }
 
 
   function columnLetterToIndex(letter){
@@ -72,37 +86,118 @@
       const batchId=`batch_${Date.now()}`; const grouped={}; valid.forEach(v=>(grouped[v.work_id]??=[]).push(v));
       let batch=db().batch(), writes=0, successWorks=0, successDetails=0;
       const commitBatchIfNeeded = async (force=false) => { if (writes>=BATCH_LIMIT || (force && writes>0)) { await batch.commit(); batch=db().batch(); writes=0; } };
-      for (const [workId,items] of Object.entries(grouped)) {
-        const ref=window.firestorePaths.inspectionWork(clientId, workId); const snap=await ref.get();
-        if (snap.exists && snap.data()?.deleted_flag!==true && snap.data()?.work?.deleted_flag!==true) { warnings.push(`作業ID ${workId} は既に存在するため取り込みませんでした。再取込する場合は管理者が既存作業を削除してください。`); continue; }
+      for (const [rawPickingNo,items] of Object.entries(grouped)) {
+        const workId=sanitizeWorkId(rawPickingNo);
+        const ref=window.firestorePaths.inspectionWork(clientId, workId);
+        const snap=await ref.get();
+        const currentStatus=snap.exists?((snap.data()||{}).status||'unstarted'):null;
+        if (snap.exists && ['current','suspended','completed','deleted'].includes(currentStatus)) { warnings.push(`作業ID ${workId} は状態 ${currentStatus} のため上書きできません。`); continue; }
+
+        if (snap.exists && currentStatus==='unstarted') {
+          await commitBatchIfNeeded(true);
+          await deleteItemsByChunk(window.firestorePaths.inspectionItems(clientId, workId));
+        }
+
         const dmap=new Map();
-        items.forEach(it=>{ const key=it.scan_code; if(!dmap.has(key)) dmap.set(key,{detail_id:`${safe(workId)}_${String(dmap.size+1).padStart(3,'0')}`,work_id:workId,scan_code:key,main_barcode:it.main_barcode||'',alt_code:it.alt_code||'',product_id:it.product_id,product_name:it.product_name,target_qty:0,actual_qty:0,completed_flag:false,display_order_base:dmap.size+1,source_rows:[],created_at:nowIso(),updated_at:nowIso()}); const d=dmap.get(key); d.target_qty+=it.target_qty; d.source_rows.push(it.row_number); if(d.product_id!==it.product_id||d.product_name!==it.product_name) warnings.push(`作業ID ${workId} / コード ${key} で商品情報不一致`); });
-        // TODO(v1.1):
-        // 設計仕様では inspectionWorks/{workId}/items/{itemId} のサブコレクション構造を想定している。
-        // 現行実装は検品実行画面との互換性のため、details 配列を inspectionWorks ドキュメント内に保持している。
-        // サブコレクション化は repository 層の移行計画を作成してから実施する。
+        items.forEach(it=>{
+          const key=(it.main_barcode||it.alt_code||'').trim();
+          if(!dmap.has(key)) dmap.set(key,{itemId:`${safe(workId)}_${String(dmap.size+1).padStart(3,'0')}`,jan:it.main_barcode||'',alternativeCode:it.alt_code||'',scanKeys:[{type:'jan',value:it.main_barcode||''},{type:'alternative',value:it.alt_code||''}].filter(x=>x.value),productName:it.product_name||'',targetQty:0,actualQty:0,inspectionRequired:true,itemStatus:'unstarted',rowNumbers:[],warningMessages:[]});
+          const d=dmap.get(key);
+          d.targetQty+=it.target_qty; d.rowNumbers.push(it.row_number);
+        });
         const details=[...dmap.values()];
-        if(inspectSlipNo){
-          const slipMap=new Map();
-          items.forEach(it=>{const slip=String(it.slip_no||'').trim(); if(!slip) return; if(!slipMap.has(slip)) slipMap.set(slip,{detail_id:`${safe(workId)}_SLIP_${String(slipMap.size+1).padStart(3,'0')}`,work_id:workId,itemType:'slip',scan_code:'',main_barcode:'',alt_code:'',jan:'',alternativeCode:'',slipNo:slip,product_name:'伝票番号確認',target_qty:1,actual_qty:0,completed_flag:false,inspectionRequired:true,itemStatus:'unstarted',scanKeys:[{type:'slipNo',value:slip}],rowNumbers:[],warningMessages:[],created_at:nowIso(),updated_at:nowIso()});
+        if (inspectSlipNo) {
+          const slipMap = new Map();
+          items.forEach((it) => {
+            const slip = String(it.slip_no || '').trim();
+            if (!slip) return;
+            if (!slipMap.has(slip)) {
+              slipMap.set(slip, {
+                itemId: `${safe(workId)}_SLIP_${String(slipMap.size + 1).padStart(3, '0')}`,
+                itemType: 'slip',
+                jan: '',
+                alternativeCode: '',
+                slipNo: slip,
+                scanKeys: [{ type: 'slipNo', value: slip }],
+                productName: '伝票番号確認',
+                targetQty: 1,
+                actualQty: 0,
+                inspectionRequired: true,
+                itemStatus: 'unstarted',
+                rowNumbers: [],
+                warningMessages: []
+              });
+            }
             slipMap.get(slip).rowNumbers.push(it.row_number);
           });
           details.push(...slipMap.values());
         }
-        const importDate=nowIso(); const importDateKey=dateKey();
-        const destinationName=items[0].destinationName||items[0].recipient_name||items[0].recipientName||'';
-        const slipNo=items[0].slipNo||items[0].slip_no||'';
-        const shipDate=items[0].shipDate||items[0].ship_date||items[0].shipment_date||null;
-        const shipperName=items[0].shipperName||items[0].shipper_name||'';
+        const excludedItemCount=details.filter(x=>x.inspectionRequired===false).length;
+        const targetQtyTotal=details.filter(x=>x.inspectionRequired!==false).reduce((n,x)=>n+Number(x.targetQty||0),0);
+        const destinationName=items[0].recipient_name||'';
+        const slipNo=items[0].slip_no||'';
+        const shipDate=items[0].ship_date||null;
+        const shipperName=items[0].shipper_name||'';
         const location=items[0].location||'';
-        batch.set(ref,{work_id:workId,status:'unstarted',import_date:importDate,import_date_key:importDateKey,deleted_flag:false,destinationName,slipNo,shipDate,shipperName,location,work:{work_id:workId,batch_id:batchId,recipient_name:destinationName,destinationName,slipNo,shipDate,shipperName,location,import_date:importDate,import_date_key:importDateKey,shipment_date:shipDate,status:'unstarted',current_worker_id:null,current_started_at:null,completed_flag:false,started_at:null,completed_at:null,suspended_at:null,reset_count:0,deleted_flag:false,created_at:importDate,updated_at:importDate},details,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:window.firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
-        writes++; await commitBatchIfNeeded(); successWorks++; successDetails+=details.length;
+        const nowTs=window.firebase.firestore.FieldValue.serverTimestamp();
+        const nowIsoText = new Date().toISOString();
+        const importDateKey = nowIsoText.slice(0, 10);
+        const legacyDetails = details.map((item, index) => ({
+          detail_id: item.itemId,
+          itemId: item.itemId,
+          work_id: workId,
+          scan_code: item.jan || item.alternativeCode || item.slipNo || '',
+          main_barcode: item.jan || '',
+          alt_code: item.alternativeCode || '',
+          jan: item.jan || '',
+          alternativeCode: item.alternativeCode || '',
+          slipNo: item.slipNo || '',
+          scanKeys: item.scanKeys || [],
+          product_id: item.productId || '',
+          product_name: item.productName || '',
+          productName: item.productName || '',
+          target_qty: Number(item.targetQty || 0),
+          targetQty: Number(item.targetQty || 0),
+          actual_qty: 0,
+          actualQty: 0,
+          completed_flag: false,
+          inspectionRequired: item.inspectionRequired !== false,
+          itemStatus: item.inspectionRequired === false ? 'excluded' : 'unstarted',
+          display_order_base: index + 1,
+          rowNumbers: item.rowNumbers || [],
+          source_rows: item.rowNumbers || [],
+          warningMessages: item.warningMessages || [],
+          created_at: nowIsoText,
+          updated_at: nowIsoText
+        }));
+        const legacyWork = {
+          work_id: workId, workId, pickingNo: rawPickingNo, picking_no: rawPickingNo,
+          batch_id: batchId, importBatchId: batchId, source_file_name: file.name, importFileName: file.name,
+          recipient_name: destinationName, destinationName, slipNo, shipDate, shipperName, location,
+          import_date: nowIsoText, import_date_key: importDateKey,
+          status: 'unstarted', current_worker_id: null, current_worker_name: null, current_device_id: null, current_started_at: null, lock_acquired_at: null,
+          completed_flag: false, started_at: null, completed_at: null, completedAt: null, suspended_at: null,
+          totalSkuCount: legacyDetails.filter(x => x.inspectionRequired !== false).length,
+          targetQtyTotal: legacyDetails.filter(x => x.inspectionRequired !== false).reduce((n, x) => n + Number(x.target_qty || 0), 0),
+          actualQtyTotal: 0,
+          excludedItemCount: legacyDetails.filter(x => x.inspectionRequired === false).length,
+          reset_count: 0, deleted_flag: false, created_at: nowIsoText, updated_at: nowIsoText
+        };
+        batch.set(ref,{workId,pickingNo:rawPickingNo,status:'unstarted',destinationName,slipNo,shipDate,shipperName,location,totalSkuCount:legacyWork.totalSkuCount,targetQtyTotal:legacyWork.targetQtyTotal,actualQtyTotal:0,excludedItemCount:legacyWork.excludedItemCount,importBatchId:batchId,importFileName:file.name,currentWorkerId:null,currentWorkerName:null,currentDeviceId:null,lockAcquiredAt:null,lastActivityAt:null,startedAt:null,completedAt:null,suspendedAt:null,createdAt:nowTs,updatedAt:nowTs,deleted_flag:false,work_id:workId,import_date:nowIsoText,import_date_key:importDateKey,work:legacyWork,details:legacyDetails,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:nowTs},{merge:true});
+        writes+=1;
+        for (const item of details){
+          batch.set(window.firestorePaths.inspectionItems(clientId, workId).doc(item.itemId),{...item,workId,pickingNo:rawPickingNo,createdAt:nowTs,updatedAt:nowTs});
+          writes+=1;
+          await commitBatchIfNeeded();
+        }
+        await commitBatchIfNeeded();
+        successWorks+=1; successDetails+=details.length;
       }
       $('importStatus').textContent='Firestore保存中...'; await commitBatchIfNeeded(true);
       const totalWorks=Object.keys(grouped).length; const batchStatus = successWorks===0 ? 'failed' : ((errors.length||warnings.length||successWorks<totalWorks)?'partial_success':'success');
-      await window.firestorePaths.importBatches(clientId).doc(batchId).set({batch_id:batchId,imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),imported_by:window.auth?.currentUser?.email||'unknown-user',source_file_name:file.name,encoding,status:batchStatus,success_work_count:successWorks,success_detail_count:successDetails,source_row_count:dataRows.length,error_count:errors.length,warning_count:warnings.length,errors,warnings});
+      await window.firestorePaths.importBatches(clientId).doc(batchId).set({batchId,batch_id:batchId,importedAt:window.firebase.firestore.FieldValue.serverTimestamp(),imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),importedBy:window.auth?.currentUser?.email||'unknown-user',imported_by:window.auth?.currentUser?.email||'unknown-user',sourceFileName:file.name,source_file_name:file.name,encoding,status:batchStatus,successWorkCount:successWorks,success_work_count:successWorks,successDetailCount:successDetails,success_detail_count:successDetails,sourceRowCount:dataRows.length,source_row_count:dataRows.length,errorCount:errors.length,error_count:errors.length,warningCount:warnings.length,warning_count:warnings.length,errors,warnings});
       const opRef=window.firestorePaths.operationLogs(clientId).doc();
-      await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{fileName:file.name,encoding,status:batchStatus,successWorkCount:successWorks,successDetailCount:successDetails,errorCount:errors.length,warningCount:warnings.length},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
+      await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{sourceFileName:file.name,sourceRowCount:dataRows.length,successWorkCount:successWorks,successDetailCount:successDetails,errorCount:errors.length,warningCount:warnings.length},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
       $('importStatus').textContent=successWorks===0?'取込失敗':'取込完了'; $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} エラー:${errors.length} 警告:${warnings.length}`;
       renderMessages('importErrors', errors.map(e=>`行${e.row}: ${e.reason} (${e.summary})`)); renderMessages('importWarnings', warnings);
     } catch (e) {

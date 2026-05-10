@@ -191,20 +191,23 @@
 
     for (const work of works) {
       const summary = toWorkSummary(work);
+      const workId = summary.workId;
+      if (window.firestorePaths.inspectionWorkItems && workId) {
+        const itemsSnap = await window.firestorePaths.inspectionWorkItems(clientId, workId).get();
+        if (!itemsSnap.empty) {
+          itemsSnap.forEach((doc) => {
+            rows.push(toItemCsvRow(summary, doc.data() || {}));
+          });
+          continue;
+        }
+      }
+
       const legacyDetails = summary.details;
       if (legacyDetails.length) {
         legacyDetails.forEach((item) => {
           rows.push(toItemCsvRow(summary, item));
         });
-        continue;
       }
-
-      const workId = summary.workId;
-      if (!window.firestorePaths.inspectionWorkItems || !workId) continue;
-      const itemsSnap = await window.firestorePaths.inspectionWorkItems(clientId, workId).get();
-      itemsSnap.forEach((doc) => {
-        rows.push(toItemCsvRow(summary, doc.data() || {}));
-      });
     }
 
     if (!rows.length) return showStatus('対象データがありませんでした。日付条件を確認してください。', 'error');
