@@ -8,14 +8,14 @@ const statusOf=r=>r.status||r.work?.status||'';
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0;};
 function getClientCollection(db,clientId,name){if(!db)throw new Error('Firestore db is not initialized');if(!clientId)throw new Error('clientId is required');if(!name)throw new Error('collection name is required');return db.collection('clients').doc(clientId).collection(name);}
 function getWorkId(r){return r.workId||r.work_id||r.id||'';}
-function getPickingNo(r){return r.pickingNo||r.work_id||r.workId||r.id||'';}
-function getDestinationName(r){return r.destinationName||r.work?.recipient_name||'';}
+function getPickingNo(r){return r.pickingNo||r.work?.pickingNo||r.work?.picking_no||r.work_id||r.workId||r.id||'';}
+function getDestinationName(r){return r.destinationName||r.work?.destinationName||r.work?.recipient_name||'';}
 function getTotalSkuCount(r){if(r.totalSkuCount!=null)return num(r.totalSkuCount);if(Array.isArray(r.details))return r.details.length;return 0;}
 function getSkuDoneCount(r){if(Array.isArray(r.details))return r.details.filter(x=>x.completed_flag||x.itemStatus==='completed').length;if(statusOf(r)==='completed')return getTotalSkuCount(r);return '-';}
-function getActualQtyTotal(r){if(r.actualQtyTotal!=null)return num(r.actualQtyTotal);if(Array.isArray(r.details))return r.details.reduce((n,x)=>n+num(x.actual_qty??x.actualQty),0);return 0;}
-function getTargetQtyTotal(r){if(r.targetQtyTotal!=null)return num(r.targetQtyTotal);if(Array.isArray(r.details))return r.details.reduce((n,x)=>n+num(x.target_qty??x.targetQty),0);return 0;}
+function getActualQtyTotal(r){if(r.actualQtyTotal!=null)return num(r.actualQtyTotal);if(r.work?.actualQtyTotal!=null)return num(r.work.actualQtyTotal);if(Array.isArray(r.details))return r.details.reduce((n,x)=>n+num(x.actual_qty??x.actualQty),0);return 0;}
+function getTargetQtyTotal(r){if(r.targetQtyTotal!=null)return num(r.targetQtyTotal);if(r.work?.targetQtyTotal!=null)return num(r.work.targetQtyTotal);if(Array.isArray(r.details))return r.details.reduce((n,x)=>n+num(x.target_qty??x.targetQty),0);return 0;}
 function getImportedAt(r){return r.createdAt||r.importedAt||r.import_date||r.work?.import_date;}
-function getCompletedAt(r){return r.completedAt||r.work?.completed_at;}
+function getCompletedAt(r){return r.completedAt||r.completed_at||r.work?.completedAt||r.work?.completed_at;}
 function getWorkerName(r){return r.completedWorkerName||r.currentWorkerName||r.work?.completed_worker_name||r.work?.current_worker_name||r.completedWorkerId||r.currentWorkerId||r.work?.current_worker_id||'-';}
 function renderEmpty(msg){$('workTableBody').innerHTML='';$('listStatus').textContent=msg||'データはまだありません。';}
 function renderError(userMessage,detail){$('workTableBody').innerHTML='';$('listStatus').textContent=userMessage;console.error('[inspection-list] detail',detail);}
