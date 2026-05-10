@@ -2,7 +2,7 @@
   const WORK_MAX_DAYS = 31;
   const WORK_FETCH_LIMIT = 2000;
   const SCAN_MAX_DAYS = 7;
-  const SCAN_FETCH_LIMIT = 10000;
+  const SCAN_FETCH_LIMIT = 9999;
   const $ = (id) => document.getElementById(id);
   const statusEl = $('downloadStatus');
   const buttonIds = ['exportCompletedCsvButton', 'exportDetailCsvButton', 'exportScanLogCsvButton'];
