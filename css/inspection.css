@@ -152,7 +152,7 @@ html.shell-embedded-root body { background: #fff; }
 .inspection-action-buttons {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   flex: 0 0 auto;
 }
 
@@ -302,7 +302,7 @@ html.shell-embedded-root body { background: #fff; }
 .inspection-row--slip td{background:#eef6ff !important;}
 
 .result-download-panel {
-  max-width: 1200px;
+  max-width: 1120px;
 }
 
 .result-download-title {
@@ -318,11 +318,11 @@ html.shell-embedded-root body { background: #fff; }
 
 .download-card-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
-.download-card {
+.download-condition-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -331,7 +331,7 @@ html.shell-embedded-root body { background: #fff; }
   background: #fff;
 }
 
-.download-card--heavy {
+.download-condition-card--heavy {
   border-color: #f59e0b;
   background: #fffbeb;
 }
@@ -349,9 +349,9 @@ html.shell-embedded-root body { background: #fff; }
 }
 
 .download-card-badge {
-  padding: 4px 8px;
+  padding: 6px 8px;
   border-radius: 999px;
-  background: #e2e8f0;
+  background: #e0f2fe;
   font-size: 12px;
   white-space: nowrap;
 }
@@ -359,34 +359,6 @@ html.shell-embedded-root body { background: #fff; }
 .download-card-badge--warning {
   background: #fef3c7;
   color: #92400e;
-}
-
-.download-card-description {
-  margin: 0;
-  color: #334155;
-  line-height: 1.6;
-}
-
-.download-card-meta {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  font-size: 13px;
-}
-
-.download-card-meta div {
-  display: grid;
-  grid-template-columns: 118px 1fr;
-  gap: 8px;
-}
-
-.download-card-meta dt {
-  color: #64748b;
-}
-
-.download-card-meta dd {
-  margin: 0;
-  font-weight: 600;
 }
 
 .filter-row {
@@ -398,17 +370,17 @@ html.shell-embedded-root body { background: #fff; }
 
 .filter-field {
   display: grid;
-  gap: 4px;
+  gap: 6px;
+  min-width: 180px;
 }
 
 .filter-field span {
   font-size: 13px;
-  font-weight: 600;
-  color: #334155;
+  color: #475569;
 }
 
 .filter-help {
-  margin: 0;
+  margin: 10px 0 16px;
   font-size: 13px;
   color: #64748b;
   line-height: 1.6;
@@ -490,3 +462,7 @@ html.shell-embedded-root body { background: #fff; }
   font-size: 13px;
   font-weight: 600;
 }
+
+.download-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.filter-field input { min-height:40px; }
+@media (max-width: 900px) { .download-card-grid { grid-template-columns: 1fr; } }

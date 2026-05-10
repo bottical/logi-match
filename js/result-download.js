@@ -1,281 +1,174 @@
 (function () {
-  const MAX_EXPORT_DAYS = 31;
-  const WORK_EXPORT_LIMIT = 1000;
-  const SCAN_LOG_EXPORT_LIMIT = 3000;
+  const WORK_MAX_DAYS = 31;
+  const WORK_FETCH_LIMIT = 2000;
+  const SCAN_MAX_DAYS = 7;
+  const SCAN_FETCH_LIMIT = 10000;
   const $ = (id) => document.getElementById(id);
-  const statusMap = { unstarted: '未着手', current: '作業中', suspended: '中断', completed: '完了' };
   const statusEl = $('downloadStatus');
-  if (!statusEl) return;
-
-  const esc = (v) => `"${String(v ?? '').replaceAll('"', '""')}"`;
+  const buttonIds = ['exportCompletedCsvButton', 'exportDetailCsvButton', 'exportScanLogCsvButton'];
+  const buttons = buttonIds.map((id) => $(id)).filter(Boolean);
+  let appCtx = null;
+  let canUsePage = false;
 
   function showStatus(message, type) {
+    if (!statusEl) return;
     statusEl.textContent = message;
     statusEl.classList.remove('status-message--error', 'status-message--success');
     if (type === 'error') statusEl.classList.add('status-message--error');
     if (type === 'success') statusEl.classList.add('status-message--success');
   }
-
-  function clearStatus() {
-    statusEl.textContent = '';
-    statusEl.classList.remove('status-message--error', 'status-message--success');
+  function setButtonsDisabled(disabled) { buttons.forEach((b) => { b.disabled = disabled; }); }
+  function getClientId() { return appCtx?.clientId || appCtx?.tenantId || window.appContext?.clientId || window.appContext?.tenantId || ''; }
+  function getInspectionWorksRef() {
+    if (appCtx?.paths?.inspectionWorks?.where) return appCtx.paths.inspectionWorks;
+    if (typeof appCtx?.paths?.inspectionWorks === 'function') return appCtx.paths.inspectionWorks(getClientId());
+    return window.firestorePaths.inspectionWorks(getClientId());
   }
-
-  function buildDateRangeFromInputs(fromId, toId, label) {
-    const fromValue = $(fromId)?.value || '';
-    const toValue = $(toId)?.value || '';
-    if (!fromValue && !toValue) throw new Error(`${label}を指定してください。大量データ取得を防ぐため、日付条件なしの出力はできません。`);
-    const startDateText = fromValue || toValue;
-    const endDateText = toValue || fromValue;
-    const start = new Date(`${startDateText}T00:00:00.000`);
-    const end = new Date(`${endDateText}T23:59:59.999`);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) throw new Error(`${label}の指定が不正です。`);
-    if (start.getTime() > end.getTime()) throw new Error(`${label}の開始日は終了日以前にしてください。`);
-    const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
-    if (days > MAX_EXPORT_DAYS) throw new Error(`出力期間は最大${MAX_EXPORT_DAYS}日までです。期間を短くして再度出力してください。`);
-    return { startDateText, endDateText };
+  function getScanLogsRef() {
+    if (appCtx?.paths?.scanLogs?.where) return appCtx.paths.scanLogs;
+    if (typeof appCtx?.paths?.scanLogs === 'function') return appCtx.paths.scanLogs(getClientId());
+    return window.firestorePaths.scanLogs(getClientId());
   }
-
-  async function queryInspectionWorks(clientId, range) {
-    const base = window.firestorePaths.inspectionWorks(clientId);
-    // NOTE: completedAt が Firestore Timestamp 型に統一された場合は fromDate() での比較へ変更する。
-    const candidates = [
-      { completedField: 'completedAt', statusField: 'status', label: 'new' },
-      { completedField: 'work.completed_at', statusField: 'work.status', label: 'legacy-work' },
-      { completedField: 'work.completed_at', statusField: 'status', label: 'legacy-mixed' }
-    ];
-
-    let lastError = null;
-    for (const c of candidates) {
-      try {
-        const snap = await base
-          .where(c.completedField, '>=', `${range.startDateText}T00:00:00.000`)
-          .where(c.completedField, '<=', `${range.endDateText}T23:59:59.999`)
-          .where(c.statusField, '==', 'completed')
-          .limit(WORK_EXPORT_LIMIT)
-          .get();
-        const rows = snap.docs.map((d) => d.data());
-        if (rows.length > 0) {
-          console.debug('[result-download] query matched', c.label, rows.length);
-          return rows;
-        }
-        console.debug('[result-download] query returned empty', c.label);
-      } catch (error) {
-        lastError = error;
-        console.warn('[result-download] query candidate failed', c.label, error);
-      }
-    }
-    if (lastError) {
-      console.warn('[result-download] all query candidates failed or empty', lastError);
-    }
-    return [];
+  function getOperationLogsRef() {
+    if (appCtx?.paths?.operationLogs?.add) return appCtx.paths.operationLogs;
+    if (typeof appCtx?.paths?.operationLogs === 'function') return appCtx.paths.operationLogs(getClientId());
+    return window.firestorePaths.operationLogs(getClientId());
   }
-
-  async function queryScanLogs(clientId, range) {
-    const base = window.firestorePaths.scanLogs(clientId);
-    const fields = ['scannedAt', 'scanned_at'];
-    let lastError = null;
-    for (const field of fields) {
-      try {
-        const snap = await base
-          .where(field, '>=', `${range.startDateText}T00:00:00.000`)
-          .where(field, '<=', `${range.endDateText}T23:59:59.999`)
-          .limit(SCAN_LOG_EXPORT_LIMIT)
-          .get();
-        const rows = snap.docs.map((d) => d.data());
-        if (rows.length > 0) {
-          console.debug('[result-download] scanLogs query matched', field, rows.length);
-          return rows;
-        }
-        console.debug('[result-download] scanLogs query returned empty', field);
-      } catch (error) {
-        lastError = error;
-        console.warn('[result-download] scanLogs query failed', field, error);
-      }
-    }
-    if (lastError) {
-      console.warn('[result-download] scanLogs all query candidates failed or empty', lastError);
-    }
-    return [];
+  function getInspectionWorkItemsRef(workId) {
+    if (typeof appCtx?.paths?.inspectionItems === 'function') return appCtx.paths.inspectionItems(workId, getClientId());
+    if (typeof appCtx?.paths?.inspectionWorkItems === 'function') return appCtx.paths.inspectionWorkItems(getClientId(), workId);
+    if (typeof appCtx?.paths?.inspectionWork === 'function') return appCtx.paths.inspectionWork(workId, getClientId()).collection('items');
+    if (typeof window.firestorePaths.inspectionWorkItems === 'function') return window.firestorePaths.inspectionWorkItems(getClientId(), workId);
+    return getInspectionWorksRef().doc(workId).collection('items');
   }
-
+  function getDeviceId() { return localStorage.getItem('deviceId') || localStorage.getItem('inspectionDeviceId') || ''; }
+  function parseLocalDate(value) {
+    const [year, month, day] = String(value || '').split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return new Date(year, month - 1, day, 0, 0, 0, 0);
+  }
+  function formatDate(value) {
+    if (!(value instanceof Date)) return '';
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }
+  function formatDateTime(value) {
+    if (!value) return '';
+    const date = typeof value.toDate === 'function' ? value.toDate() : value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+  }
+  function buildDateRange(fromValue, toValue) {
+    if (!fromValue && !toValue) throw new Error('日付を指定してください。全期間の出力はできません。');
+    const start = parseLocalDate(fromValue || toValue);
+    const to = parseLocalDate(toValue || fromValue);
+    if (!start || !to) throw new Error('日付の指定が不正です。');
+    if (start.getTime() > to.getTime()) throw new Error('開始日は終了日以前で指定してください。');
+    const endExclusive = new Date(to);
+    endExclusive.setDate(endExclusive.getDate() + 1);
+    return { start, endExclusive, days: Math.round((endExclusive - start) / 86400000), from: formatDate(start), to: formatDate(to) };
+  }
+  function csvEscape(value) {
+    const s = value == null ? '' : String(value);
+    if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
   function downloadCsv(filename, headers, rows) {
-    const lines = [headers.map(esc).join(',')];
-    rows.forEach((row) => lines.push(row.map(esc).join(',')));
-    const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const body = [headers, ...rows].map((r) => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF' + body], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
   }
-
-  function toWorkSummary(r) {
-    const w = r.work || {};
-    const details = Array.isArray(r.details) ? r.details : Array.isArray(w.details) ? w.details : [];
-    return {
-      workId: w.workId || w.work_id || r.workId || r.work_id || w.pickingNo || w.picking_no || r.pickingNo || r.picking_no || '',
-      pickingNo: w.pickingNo || w.picking_no || w.work_id || r.pickingNo || r.work_id || '',
-      status: w.status || r.status || '',
-      destinationName: w.destinationName || w.recipient_name || r.destinationName || r.recipient_name || '',
-      startedAt: w.startedAt || w.started_at || r.startedAt || r.started_at || '',
-      completedAt: w.completedAt || w.completed_at || r.completedAt || r.completed_at || '',
-      workerName: w.completed_worker_name || w.current_worker_name || w.current_worker_id || r.workerNameSnapshot || '',
-      importFileName: w.importFileName || w.import_file_name || r.importFileName || r.import_file_name || '',
-      totalSkuCount: Number(w.totalSkuCount ?? w.total_sku_count ?? r.totalSkuCount ?? r.total_sku_count ?? details.length ?? 0),
-      targetQtyTotal: Number(w.targetQtyTotal ?? w.target_qty_total ?? r.targetQtyTotal ?? r.target_qty_total ?? 0),
-      actualQtyTotal: Number(w.actualQtyTotal ?? w.actual_qty_total ?? r.actualQtyTotal ?? r.actual_qty_total ?? 0),
-      excludedItemCount: Number(w.excludedItemCount ?? w.excluded_item_count ?? r.excludedItemCount ?? r.excluded_item_count ?? 0),
-      details
-    };
-  }
-
-  function toItemCsvRow(summary, item) {
-    const scheduled = Number(item.targetQty ?? item.target_qty ?? 0);
-    const actual = Number(item.actualQty ?? item.actual_qty ?? 0);
-    const isExcluded =
-      item.inspectionRequired === false ||
-      item.inspection_target === false ||
-      item.inspectionTarget === false ||
-      item.itemStatus === 'excluded';
-
-    return [
-      summary.pickingNo,
-      item.jan ?? item.jan_code ?? item.janCode ?? '',
-      item.alternativeCode ?? item.alternative_code ?? item.alternate_code ?? item.alternateCode ?? '',
-      item.productName ?? item.product_name ?? '',
-      scheduled,
-      actual,
-      actual - scheduled,
-      isExcluded ? '検品対象外' : '検品対象',
-      statusMap[summary.status] || summary.status
-    ];
-  }
-
-  async function exportCompletedWorksCsv(range) {
-    const clientId = window.appContext.clientId || window.appContext.tenantId;
-    if (!clientId) throw new Error('クライアント未取得');
-    const rows = (await queryInspectionWorks(clientId, range)).filter((r) => r.deleted_flag !== true && r.work?.deleted_flag !== true);
-    if (!rows.length) return showStatus('対象データがありませんでした。日付条件を確認してください。', 'error');
-
-    const records = rows.map((r) => {
-      const s = toWorkSummary(r);
-      const detailTargetQty = s.details.reduce((n, x) => n + Number(x.target_qty ?? x.targetQty ?? x.targetQtyTotal ?? 0), 0);
-      const detailActualQty = s.details.reduce((n, x) => n + Number(x.actual_qty ?? x.actualQty ?? 0), 0);
-      const detailExcluded = s.details.filter((x) =>
-        x.inspection_target === false ||
-        x.inspectionTarget === false ||
-        x.inspectionRequired === false ||
-        x.itemStatus === 'excluded'
-      ).length;
-      const skuCount = s.details.length || s.totalSkuCount;
-      const targetQty = s.details.length ? detailTargetQty : s.targetQtyTotal;
-      const actualQty = s.details.length ? detailActualQty : s.actualQtyTotal;
-      const excluded = s.details.length ? detailExcluded : s.excludedItemCount;
-      return [s.pickingNo, statusMap[s.status] || s.status, s.destinationName, skuCount, targetQty, actualQty, excluded, s.startedAt, s.completedAt, s.workerName, s.importFileName];
+  const toYYYYMMDD = (v) => String(v || '').replaceAll('-', '');
+  async function logDownload(detail) {
+    await getOperationLogsRef().add({
+      operationType: 'download', targetType: 'result_download', targetId: detail.downloadType || '',
+      workerId: '', workerNameSnapshot: '', userId: appCtx?.user?.uid || '', deviceId: getDeviceId(), detail,
+      operatedAt: firebase.firestore.FieldValue.serverTimestamp(),
     });
-
-    downloadCsv('completed_works.csv', ['ピッキングNo.', 'ステータス', 'お届け先名', 'SKU数', '検品対象数量合計', '実績数量合計', '検品対象外行数', '開始時刻', '完了時刻', '作業者', '取込ファイル名'], records);
-    if (rows.length >= WORK_EXPORT_LIMIT) {
-      showStatus(`${WORK_EXPORT_LIMIT}件まで出力しました。対象データが多い可能性があります。期間を短くしてください。`, 'error');
-      return;
-    }
-    showStatus('CSVを出力しました。', 'success');
   }
-
-  async function exportDetailCsv(range) {
-    const clientId = window.appContext.clientId || window.appContext.tenantId;
-    if (!clientId) throw new Error('クライアント未取得');
-    const works = await queryInspectionWorks(clientId, range);
+  // Firestoreで複合インデックスが必要になる場合がある。
+  // inspectionWorks: status Asc, completedAt Asc
+  // Firebase Console にインデックス作成リンクが出た場合は、その内容に従って作成する。
+  async function queryCompletedWorks(range) {
+    const snap = await getInspectionWorksRef().where('status', '==', 'completed').where('completedAt', '>=', range.start).where('completedAt', '<', range.endExclusive).orderBy('completedAt', 'asc').limit(WORK_FETCH_LIMIT + 1).get();
+    if (snap.size > WORK_FETCH_LIMIT) throw new Error('対象件数が多すぎます。期間を短くして再度出力してください。');
+    return snap.docs;
+  }
+  async function exportCompleted(range) {
+    if (range.days > WORK_MAX_DAYS) throw new Error('完了日範囲は31日以内で指定してください。');
+    const docs = await queryCompletedWorks(range);
+    const rows = docs.map((doc) => {
+      const w = doc.data() || {};
+      return [w.pickingNo || '', w.status || '', w.destinationName || '', w.totalSkuCount || w.skuCount || 0, w.targetQtyTotal || 0, w.actualQtyTotal || 0, w.excludedItemCount || 0, formatDateTime(w.startedAt), formatDateTime(w.completedAt), w.completedWorkerName || w.currentWorkerName || w.workerNameSnapshot || w.workerName || '', w.importBatchId || '', w.importFileName || ''];
+    });
+    if (!rows.length) throw new Error('対象データがありません。日付条件を確認してください。');
+    downloadCsv(`completed_works_${toYYYYMMDD(range.from)}_${toYYYYMMDD(range.to)}.csv`, ['ピッキングNo.', 'ステータス', 'お届け先名', 'SKU数', '検品対象数量合計', '実績数量合計', '検品対象外行数', '開始時刻', '完了時刻', '作業者', '取込バッチID', '取込ファイル名'], rows);
+    await logDownload({ downloadType: 'completed_works', from: range.from, to: range.to, rowCount: rows.length });
+    showStatus(`CSVを出力しました。（${rows.length}件）`, 'success');
+  }
+  function resolveItemStatus(item, target, actual) { if (item.itemStatus) return item.itemStatus; if (actual >= target) return 'completed'; if (actual > 0) return 'working'; return 'unstarted'; }
+  async function exportDetails(range) {
+    if (range.days > WORK_MAX_DAYS) throw new Error('完了日範囲は31日以内で指定してください。');
+    const works = await queryCompletedWorks(range);
     const rows = [];
-
-    for (const work of works) {
-      const summary = toWorkSummary(work);
-      const workId = summary.workId;
-      if (window.firestorePaths.inspectionWorkItems && workId) {
-        const itemsSnap = await window.firestorePaths.inspectionWorkItems(clientId, workId).get();
-        if (!itemsSnap.empty) {
-          itemsSnap.forEach((doc) => {
-            rows.push(toItemCsvRow(summary, doc.data() || {}));
-          });
-          continue;
-        }
-      }
-
-      const legacyDetails = summary.details;
-      if (legacyDetails.length) {
-        legacyDetails.forEach((item) => {
-          rows.push(toItemCsvRow(summary, item));
-        });
-      }
+    for (const workDoc of works) {
+      const work = workDoc.data() || {};
+      const itemSnap = await getInspectionWorkItemsRef(workDoc.id).get();
+      itemSnap.forEach((itemDoc) => {
+        const item = itemDoc.data() || {};
+        const target = Number(item.targetQty ?? 0);
+        const actual = Number(item.actualQty ?? 0);
+        rows.push([work.pickingNo || '', item.jan || '', item.alternativeCode || '', item.productName || '', target, actual, actual - target, item.inspectionRequired === false ? '検品対象外' : '検品対象', resolveItemStatus(item, target, actual), work.destinationName || '', work.slipNo || '', work.shipDate || '', work.shipperName || '', work.location || item.location || '', work.importFileName || '', formatDateTime(work.completedAt)]);
+      });
     }
-
-    if (!rows.length) return showStatus('対象データがありませんでした。日付条件を確認してください。', 'error');
-    downloadCsv('inspection_detail.csv', ['ピッキングNo.', 'JAN', '代替コード', '商品名', '予定数量', '実績数量', '差異', '区分', 'ステータス'], rows);
-    showStatus('CSVを出力しました。', 'success');
+    if (!rows.length) throw new Error('対象データがありません。日付条件を確認してください。');
+    downloadCsv(`inspection_details_${toYYYYMMDD(range.from)}_${toYYYYMMDD(range.to)}.csv`, ['ピッキングNo.', 'JAN', '代替コード', '商品名', '予定数量', '実績数量', '差異', '区分', 'ステータス', 'お届け先名', '伝票番号', '出荷日', '荷主名', 'ロケーション', '取込ファイル名', '完了時刻'], rows);
+    await logDownload({ downloadType: 'details', from: range.from, to: range.to, workCount: works.length, rowCount: rows.length });
+    showStatus(`CSVを出力しました。（${rows.length}件）`, 'success');
   }
-
-  async function exportScanLogsCsv(range) {
-    if (!window.confirm('全スキャンログCSVは件数が多くなる場合があります。指定期間のログを出力しますか？')) return;
-    const clientId = window.appContext.clientId || window.appContext.tenantId;
-    if (!clientId) throw new Error('クライアント未取得');
-    const logs = await queryScanLogs(clientId, range);
-    if (!logs.length) return showStatus('対象データがありませんでした。日付条件を確認してください。', 'error');
-
-    const rows = logs.map((log) => [
-      log.scannedAt ?? log.scanned_at ?? '',
-      log.scannedCode ?? log.barcode ?? log.scanned_code ?? '',
-      log.codeType ?? log.code_type ?? '',
-      log.currentPickingNo ?? log.current_work_id ?? '',
-      log.pickingNo ?? log.matched_work_id ?? '',
-      log.result ?? '',
-      log.errorMessage ?? log.error_message ?? '',
-      log.inputQty ?? log.input_qty ?? '',
-      log.beforeQty ?? log.before_qty ?? '',
-      log.afterQty ?? log.after_qty ?? '',
-      log.targetQty ?? log.target_qty ?? '',
-      log.workerId ?? log.worker_id ?? '',
-      log.workerNameSnapshot ?? log.worker_name ?? '',
-      log.deviceId ?? log.device_id ?? ''
-    ]);
-
-    downloadCsv('scan_logs.csv', ['日時', '読み込んだバーコード', 'コード種別', '現在作業中のピッキングNo.', '該当ピッキングNo.', '結果', 'エラー内容', '入力数量', '加算前数量', '加算後数量', '予定数量', '作業者ID', '作業者名', '端末ID'], rows);
-    if (logs.length >= SCAN_LOG_EXPORT_LIMIT) {
-      showStatus(`${SCAN_LOG_EXPORT_LIMIT}件まで出力しました。スキャンログが多い可能性があります。期間を短くしてください。`, 'error');
-      return;
-    }
-    showStatus('CSVを出力しました。', 'success');
+  async function exportScanLogs(range) {
+    if (range.days > SCAN_MAX_DAYS) throw new Error('スキャンログはデータ量が多いため、7日以内で指定してください。');
+    const snap = await getScanLogsRef().where('scannedAt', '>=', range.start).where('scannedAt', '<', range.endExclusive).orderBy('scannedAt', 'asc').limit(SCAN_FETCH_LIMIT + 1).get();
+    if (snap.size > SCAN_FETCH_LIMIT) throw new Error('スキャンログ件数が多すぎます。期間を短くして再度出力してください。');
+    const rows = snap.docs.map((doc) => { const l = doc.data() || {}; return [formatDateTime(l.scannedAt), l.scannedCode || '', l.codeType || '', l.currentPickingNo || '', l.pickingNo || '', l.result || '', l.errorMessage || '', l.inputQty || '', l.beforeQty || '', l.afterQty || '', l.targetQty || '', l.workerId || '', l.workerNameSnapshot || l.workerName || '', l.deviceId || '']; });
+    if (!rows.length) throw new Error('対象データがありません。日付条件を確認してください。');
+    downloadCsv(`scan_logs_${toYYYYMMDD(range.from)}_${toYYYYMMDD(range.to)}.csv`, ['日時', '読み込んだバーコード', 'コード種別', '現在作業中のピッキングNo.', '該当ピッキングNo.', '結果', 'エラー内容', '入力数量', '加算前数量', '加算後数量', '予定数量', '作業者ID', '作業者名', '端末ID'], rows);
+    await logDownload({ downloadType: 'scan_logs', from: range.from, to: range.to, rowCount: rows.length });
+    showStatus(`CSVを出力しました。（${rows.length}件）`, 'success');
   }
-
-  async function exportCsv(type) {
-    clearStatus();
+  async function runExport(type) {
+    if (!canUsePage) return;
+    setButtonsDisabled(true);
+    showStatus('処理中です。しばらくお待ちください。');
     try {
-      if (!window.db) throw new Error('Firebase未接続');
-      showStatus('CSVを作成しています。しばらくお待ちください。');
-      if (type === 'completed') return exportCompletedWorksCsv(buildDateRangeFromInputs('completedFrom', 'completedTo', '検品完了日'));
-      if (type === 'detail') return exportDetailCsv(buildDateRangeFromInputs('completedFrom', 'completedTo', '検品完了日'));
-      if (type === 'scanLogs') return exportScanLogsCsv(buildDateRangeFromInputs('logFrom', 'logTo', 'スキャン日'));
-      throw new Error('未対応のCSV種別です。');
-    } catch (error) {
-      console.error('[result-download] export failed', error);
-      showStatus(error?.message || 'CSV出力に失敗しました。時間をおいて再度お試しください。', 'error');
-    }
-  }
-
-  ['exportCompletedCsvButton', 'exportDetailCsvButton', 'exportScanLogCsvButton'].forEach((id) => { const b = $(id); if (b) b.disabled = true; });
-  (async () => {
-    try {
-      const ctx = await window.appInit.ready(document.body.dataset.page);
-      console.debug('[app-init]', { page: document.body.dataset.page, clientId: ctx.clientId, role: ctx.role });
-      window.renderSidebar?.();
-      ['exportCompletedCsvButton', 'exportDetailCsvButton', 'exportScanLogCsvButton'].forEach((id) => { const b = $(id); if (b) b.disabled = false; });
+      if (type === 'completed') await exportCompleted(buildDateRange($('completedFrom')?.value, $('completedTo')?.value));
+      else if (type === 'details') await exportDetails(buildDateRange($('completedFrom')?.value, $('completedTo')?.value));
+      else await exportScanLogs(buildDateRange($('logFrom')?.value, $('logTo')?.value));
     } catch (e) {
-      console.error('[result-download] init failed', e);
-      showStatus('初期設定に失敗しました。ログイン状態またはテナント設定を確認してください。', 'error');
+      showStatus(e?.message || 'CSV出力に失敗しました。時間をおいて再度お試しください。', 'error');
+    } finally {
+      setButtonsDisabled(!canUsePage);
     }
-  })();
+  }
 
-  $('exportCompletedCsvButton')?.addEventListener('click', () => exportCsv('completed'));
-  $('exportDetailCsvButton')?.addEventListener('click', () => exportCsv('detail'));
-  $('exportScanLogCsvButton')?.addEventListener('click', () => exportCsv('scanLogs'));
+  setButtonsDisabled(true);
+  window.appInit.ready('result-download').then((ctx) => {
+    appCtx = ctx;
+    window.renderSidebar?.();
+    if (!getClientId()) throw new Error('テナント情報を取得できません。');
+    canUsePage = ctx.role === 'admin';
+    if (!canUsePage) showStatus('このページを利用する権限がありません。', 'error');
+    setButtonsDisabled(!canUsePage);
+  }).catch(() => {
+    canUsePage = false;
+    showStatus('初期設定に失敗しました。ログイン状態を確認してください。', 'error');
+    setButtonsDisabled(true);
+  });
+
+  $('exportCompletedCsvButton')?.addEventListener('click', () => runExport('completed'));
+  $('exportDetailCsvButton')?.addEventListener('click', () => runExport('details'));
+  $('exportScanLogCsvButton')?.addEventListener('click', () => runExport('scan'));
 })();

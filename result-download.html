@@ -30,67 +30,40 @@
       <main class="portal">
         <section class="panel result-download-panel">
           <h1 class="result-download-title">検品実績ダウンロード</h1>
-          <p class="result-download-lead">出力したいCSVを選択してください。各CSVには日付条件が必要です。</p>
+          <p class="result-download-lead">出力条件を指定してCSVをダウンロードしてください。</p>
 
           <div class="download-card-grid">
-            <section class="download-card" aria-labelledby="completedCsvTitle">
+            <section class="download-condition-card" aria-labelledby="completedDownloadsTitle">
               <div class="download-card-header">
-                <h2 id="completedCsvTitle">完了作業ログCSV</h2>
-                <span class="download-card-badge">ピッキングNo.単位</span>
+                <h2 id="completedDownloadsTitle">完了日で出力</h2>
+                <span class="download-card-badge">完了実績</span>
               </div>
-              <p class="download-card-description">検品完了した作業を、ピッキングNo.単位のサマリーとして出力します。</p>
-              <dl class="download-card-meta">
-                <div><dt>日付条件</dt><dd>検品完了日（完了作業ログCSV・明細CSVに使用）</dd></div>
-              </dl>
               <div class="filter-row">
-                <label class="filter-field" for="completedFrom">
-                  <span>検品完了日（開始）</span>
-                  <input id="completedFrom" type="date">
-                </label>
+                <label class="filter-field" for="completedFrom"><span>検品完了日（開始）</span><input id="completedFrom" type="date"></label>
                 <span class="filter-separator">〜</span>
-                <label class="filter-field" for="completedTo">
-                  <span>検品完了日（終了）</span>
-                  <input id="completedTo" type="date">
-                </label>
+                <label class="filter-field" for="completedTo"><span>検品完了日（終了）</span><input id="completedTo" type="date"></label>
               </div>
-              <p class="filter-help">未指定での全件出力はできません。片方だけ指定した場合は、その1日分を出力します。</p>
-              <button id="exportCompletedCsvButton" type="button" class="primary-action">完了作業ログCSVを出力</button>
+              <p class="filter-help">31日以内で指定してください。片方のみ指定した場合は、その1日分を出力します。</p>
+              <div class="download-actions">
+                <button id="exportCompletedCsvButton" type="button" class="primary-action">完了作業ログCSV</button>
+                <button id="exportDetailCsvButton" type="button" class="primary-action">明細CSV</button>
+              </div>
             </section>
 
-            <section class="download-card" aria-labelledby="detailCsvTitle">
+            <section class="download-condition-card download-condition-card--heavy" aria-labelledby="scanLogDownloadsTitle">
               <div class="download-card-header">
-                <h2 id="detailCsvTitle">明細CSV</h2>
-                <span class="download-card-badge">商品明細単位</span>
+                <h2 id="scanLogDownloadsTitle">スキャン日で出力</h2>
+                <span class="download-card-badge download-card-badge--warning">ログ</span>
               </div>
-              <p class="download-card-description">商品ごとの予定数量・実績数量・差異を出力します。検品対象外行も含めます。</p>
-              <dl class="download-card-meta">
-                <div><dt>日付条件</dt><dd>検品完了日</dd></div>
-              </dl>
-              <button id="exportDetailCsvButton" type="button" class="primary-action">明細CSVを出力</button>
-            </section>
-
-            <section class="download-card download-card--heavy" aria-labelledby="scanLogCsvTitle">
-              <div class="download-card-header">
-                <h2 id="scanLogCsvTitle">全スキャンログCSV</h2>
-                <span class="download-card-badge download-card-badge--warning">データ量多</span>
-              </div>
-              <p class="download-card-description">JAN・代替コードの読み取り履歴を1スキャン単位で出力します。対象外・過剰スキャンなどのエラーも含みます。</p>
-              <dl class="download-card-meta">
-                <div><dt>日付条件</dt><dd>スキャン日</dd></div>
-              </dl>
               <div class="filter-row">
-                <label class="filter-field" for="logFrom">
-                  <span>スキャン日（開始）</span>
-                  <input id="logFrom" type="date">
-                </label>
+                <label class="filter-field" for="logFrom"><span>スキャン日（開始）</span><input id="logFrom" type="date"></label>
                 <span class="filter-separator">〜</span>
-                <label class="filter-field" for="logTo">
-                  <span>スキャン日（終了）</span>
-                  <input id="logTo" type="date">
-                </label>
+                <label class="filter-field" for="logTo"><span>スキャン日（終了）</span><input id="logTo" type="date"></label>
               </div>
-              <p class="filter-help">スキャンログは件数が多いため、必ずスキャン日を指定してください。片方だけ指定した場合は、その1日分を出力します。</p>
-              <button id="exportScanLogCsvButton" type="button" class="primary-action">全スキャンログCSVを出力</button>
+              <p class="filter-help">7日以内で指定してください。片方のみ指定した場合は、その1日分を出力します。</p>
+              <div class="download-actions">
+                <button id="exportScanLogCsvButton" type="button" class="primary-action">全スキャンログCSV</button>
+              </div>
             </section>
           </div>
 
