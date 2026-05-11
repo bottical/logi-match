@@ -32,7 +32,7 @@
     const items=defs.filter((i)=> window.permissions?.hasPageAccess(i.id, role));
 
     host.className='main-sidebar inspection-sidebar';
-    host.innerHTML=`<div class="brand-link"><span class="brand-text">ロジマッチ</span></div><div class="sidebar"><div style="padding:8px;color:#fff;font-size:12px;">${window.appContext?.clientName||window.appContext?.tenantName||''}<br>${window.appContext?.email||''}</div><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column">${items.map(i=>`<li class='nav-item'><a class='nav-link ${i.id===page?'active':''}' href='${i.href}'><p>${i.label}</p></a></li>`).join('')}<li class='nav-item'><a class='nav-link' href='#' id='logoutLink'><p>ログアウト</p></a></li></ul></nav></div>`;
+    host.innerHTML=`<a class="brand-link sidebar-brand" href="./#inspection" aria-label="ロジマッチ ホーム"><img class="sidebar-brand-logo" src="./assets/brand/logimatch-logo.png" alt="ロジマッチ" width="160" height="40"></a><div class="sidebar"><div style="padding:8px;color:#fff;font-size:12px;">${window.appContext?.clientName||window.appContext?.tenantName||''}<br>${window.appContext?.email||''}</div><nav class="mt-2"><ul class="nav nav-pills nav-sidebar flex-column">${items.map(i=>`<li class='nav-item'><a class='nav-link ${i.id===page?'active':''}' href='${i.href}'><p>${i.label}</p></a></li>`).join('')}<li class='nav-item'><a class='nav-link' href='#' id='logoutLink'><p>ログアウト</p></a></li></ul></nav></div>`;
     document.getElementById('logoutLink')?.addEventListener('click', async(e)=>{e.preventDefault(); await window.authApi.logout(); clearAppContext(); location.href='./login.html';});
 
     const applySidebarState = () => {
