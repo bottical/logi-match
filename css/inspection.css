@@ -466,3 +466,10 @@ html.shell-embedded-root body { background: #fff; }
 .download-actions { display:flex; gap:10px; flex-wrap:wrap; }
 .filter-field input { min-height:40px; }
 @media (max-width: 900px) { .download-card-grid { grid-template-columns: 1fr; } }
+
+.app-title--logo{display:inline-flex;align-items:center}
+.app-title-logo{display:block;height:28px;width:auto;max-width:160px;object-fit:contain}
+.login-brand{display:flex;align-items:center;justify-content:center;margin:0 0 16px}
+.login-brand-logo{display:block;width:min(180px,70vw);max-height:56px;object-fit:contain}
+.inspection-page .brand-link.sidebar-brand{display:flex;align-items:center;justify-content:center;padding:12px;border-bottom:1px solid #d8dde3;text-decoration:none}
+.inspection-page .sidebar-brand-logo{display:block;width:min(160px,100%);max-height:40px;object-fit:contain}
