@@ -55,48 +55,90 @@
 
   function renderMessages(id, rows){ const ul=$(id); ul.replaceChildren(); rows.forEach(r=>{const li=document.createElement('li'); li.textContent=r; ul.appendChild(li);}); }
 
+  async function resolveImportContext(){
+    const uid = window.auth?.currentUser?.uid || window.appContext?.uid || null;
+    const email = window.auth?.currentUser?.email || null;
+    const clientId = window.appContext?.clientId || window.appContext?.tenantId || null;
+    const role = window.appContext?.role || null;
+    const membershipActive = window.appContext?.membershipActive;
+    return { uid, email, clientId, role, membershipActive };
+  }
+
+  function isPermissionDeniedError(error){
+    return Boolean(error && (error.code === 'permission-denied' || String(error.message||'').includes('Missing or insufficient permissions')));
+  }
+
   async function runImport(){
-    if (!db()) return alert('Firebase未接続'); if(!window.appContext?.tenantId) return alert('テナント情報の取得が完了していません。再読み込みしてください。');
+    if (!db()) return alert('システム接続を確認できません。時間をおいて再読み込みしてください。'); if(!window.appContext?.tenantId) return alert('テナント情報の取得が完了していません。再読み込みしてください。');
     const file=$('csvFile').files[0]; if(!file) return;
     $('importStatus').textContent='取込中...'; $('importResult').textContent=''; renderMessages('importErrors',[]); renderMessages('importWarnings',[]);
     const warnings=[]; const errors=[];
+    const importPlan = { newWorks: [], overwriteWorks: [], skippedWorks: [], warnings, errors, blockedOperations: [] };
     try {
       const {text,encoding,warnings:dw}=window.csvUtils.decodeCsvArrayBuffer(await file.arrayBuffer()); warnings.push(...dw);
       const rows=window.csvUtils.parseCsv(text); if(rows.length<1) return fail('CSVとして読めない、またはデータがありません');
       // 現行 appContext では tenantId 名で保持しているが、設計仕様上は clientId として扱う。
-      const clientId=window.appContext.clientId||window.appContext.tenantId;
+      const context = await resolveImportContext();
+      const clientId=context.clientId;
+      if(!context.uid || !clientId || context.membershipActive === false) return fail('ログインユーザーの所属情報を確認できません。管理者に確認してください。');
+      if(context.role !== 'admin') return fail('CSV取込権限がありません。管理者アカウントでログインしてください。');
       const mapping=await loadCsvMapping(clientId);
       const useMapping=Boolean(mapping?.columns);
       const inspectSlipNo=Boolean(mapping?.options?.inspectSlipNo);
       const map=useMapping?convertMappingKeysToLegacyMap(mapping):mapHeaders(rows[0]);
       const dataRows=useMapping?(mapping.hasHeader?rows.slice(1):rows):rows.slice(1);
-      const miss=requiredBase.filter(k=>map[k]===undefined); const hasBarcodeHeader = map.main_barcode !== undefined || map.alt_code !== undefined; if(inspectSlipNo&&map.slip_no===undefined) miss.push('slip_no'); if(miss.length || !hasBarcodeHeader) return fail((useMapping?'CSVマッピング必須項目不足: ':'必須ヘッダ不足: ')+[...miss, ...(!hasBarcodeHeader ? ['main_barcode または alt_code'] : [])].join(','));
+      const miss=requiredBase.filter(k=>map[k]===undefined); const hasBarcodeHeader = map.main_barcode !== undefined || map.alt_code !== undefined; if(inspectSlipNo&&map.slip_no===undefined) miss.push('slip_no'); if(!mapping || miss.length || !hasBarcodeHeader) return fail('CSVマッピング設定に不足があります。マッピング設定を確認してください。');
       const valid=[];
+      const fatalPickingNos = new Set();
       dataRows.forEach((r,i)=>{ const n=(useMapping&&mapping.hasHeader===false)?i+1:i+2; const o=rowObj(r,map);
         const ng=(m)=>errors.push({row:n,reason:m,summary:`${o.work_id||''}/${o.product_id||''}/${o.product_name||''}`});
-        if(!o.work_id) return ng('作業IDが空');
+        if(!o.work_id) return ng('ピッキングNo.空欄');
         if(!o.main_barcode && !o.alt_code) return ng('メインバーコード・代替コードが空');
-        const q=Number(o.target_qty); if(!o.target_qty || !Number.isFinite(q) || q<=0) return ng('指示数が不正');
+        const q=Number(o.target_qty); if(!o.target_qty) return ng('数量空欄'); if(!Number.isFinite(q)) return ng('数量不正'); if(q<0) return ng('数量マイナス'); if(!Number.isInteger(q)) return ng('数量小数'); if(q===0){ warnings.push(`行${n}: 数量0のため取込対象外としてスキップしました`); return; }
         if((o.excluded_flag||'').toUpperCase()==='ON' || o.excluded_flag==='1') return ng('対象外フラグON');
         if(inspectSlipNo && !o.slip_no) return ng('伝票番号が空');
         o.product_id=o.product_id||`AUTO-${o.work_id}-${n}`; o.product_name=o.product_name||''; o.recipient_name=o.recipient_name||''; o.target_qty=q; o.scan_code=o.main_barcode||o.alt_code; o.row_number=n; valid.push(o);
       });
+      const scanKeyDupMap = new Map();
+      valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; scanKeyDupMap.set(key,(scanKeyDupMap.get(key)||0)+1); });
+      valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; if((scanKeyDupMap.get(key)||0)>1){ fatalPickingNos.add(workId); } });
+      if(fatalPickingNos.size){
+        [...fatalPickingNos].forEach(pickingNo=>warnings.push(`${pickingNo}：CSV内に取込できない行があります。対象のピッキングNo.はスキップされました。`));
+      }
       if(!valid.length) return fail('正常行が1件もありません');
       $('importStatus').textContent='既存作業ID確認中...';
       const batchId=`batch_${Date.now()}`; const grouped={}; valid.forEach(v=>(grouped[v.work_id]??=[]).push(v));
       let batch=db().batch(), writes=0, successWorks=0, successDetails=0;
       const commitBatchIfNeeded = async (force=false) => { if (writes>=BATCH_LIMIT || (force && writes>0)) { await batch.commit(); batch=db().batch(); writes=0; } };
       for (const [rawPickingNo,items] of Object.entries(grouped)) {
+        if(fatalPickingNos.has(rawPickingNo)) continue;
         const workId=sanitizeWorkId(rawPickingNo);
         const ref=window.firestorePaths.inspectionWork(clientId, workId);
         const snap=await ref.get();
         const currentStatus=snap.exists?((snap.data()||{}).status||'unstarted'):null;
-        if (snap.exists && ['current','suspended','completed','deleted'].includes(currentStatus)) { warnings.push(`作業ID ${workId} は状態 ${currentStatus} のため上書きできません。`); continue; }
+        if (snap.exists && ['current','suspended','completed','deleted'].includes(currentStatus)) {
+          const statusMsg = currentStatus==='completed' ? '検品完了済みのため上書きできません' : currentStatus==='current' ? '作業中のため上書きできません' : currentStatus==='suspended' ? '中断中のため上書きできません' : '削除済みのため上書きできません';
+          const msg = `${rawPickingNo}：${statusMsg}`;
+          importPlan.skippedWorks.push({ pickingNo: rawPickingNo, reasonCode: `status_${currentStatus}`, message: msg });
+          warnings.push(msg);
+          continue;
+        }
 
         if (snap.exists && currentStatus==='unstarted') {
-          await commitBatchIfNeeded(true);
-          await deleteItemsByChunk(window.firestorePaths.inspectionItems(clientId, workId));
+          const existingItemsSnap = await window.firestorePaths.inspectionItems(clientId, workId).get();
+          const existingKeys = new Set(existingItemsSnap.docs.map((d)=>`${(d.data()?.jan||'').trim()}|${(d.data()?.alternativeCode||'').trim()}|${(d.data()?.slipNo||'').trim()}`));
+          const incomingKeys = new Set(items.map((it)=>`${String(it.main_barcode||'').trim()}|${String(it.alt_code||'').trim()}|${String(it.slip_no||'').trim()}`));
+          const requiresDelete = existingKeys.size !== incomingKeys.size || [...existingKeys].some((k)=>!incomingKeys.has(k));
+          if(requiresDelete){
+            const blockedMessage = `${rawPickingNo}：既存明細と今回CSVのバーコード構成が異なるため、上書きできませんでした`; 
+            importPlan.blockedOperations.push({ pickingNo: rawPickingNo, reasonCode: 'requires_delete', message: blockedMessage });
+            warnings.push(blockedMessage);
+            warnings.push('現在の安全設定では、取込済み明細の削除を伴う差し替えは行いません。');
+            continue;
+          }
+          importPlan.overwriteWorks.push(rawPickingNo);
         }
+        if (!snap.exists) importPlan.newWorks.push(rawPickingNo);
 
         const dmap=new Map();
         items.forEach(it=>{
@@ -193,15 +235,30 @@
         await commitBatchIfNeeded();
         successWorks+=1; successDetails+=details.length;
       }
-      $('importStatus').textContent='Firestore保存中...'; await commitBatchIfNeeded(true);
+      $('importStatus').textContent='取込内容を保存中...'; await commitBatchIfNeeded(true);
       const totalWorks=Object.keys(grouped).length; const batchStatus = successWorks===0 ? 'failed' : ((errors.length||warnings.length||successWorks<totalWorks)?'partial_success':'success');
       await window.firestorePaths.importBatches(clientId).doc(batchId).set({batchId,batch_id:batchId,importedAt:window.firebase.firestore.FieldValue.serverTimestamp(),imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),importedBy:window.auth?.currentUser?.email||'unknown-user',imported_by:window.auth?.currentUser?.email||'unknown-user',sourceFileName:file.name,source_file_name:file.name,encoding,status:batchStatus,successWorkCount:successWorks,success_work_count:successWorks,successDetailCount:successDetails,success_detail_count:successDetails,sourceRowCount:dataRows.length,source_row_count:dataRows.length,errorCount:errors.length,error_count:errors.length,warningCount:warnings.length,warning_count:warnings.length,errors,warnings});
       const opRef=window.firestorePaths.operationLogs(clientId).doc();
       await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{sourceFileName:file.name,sourceRowCount:dataRows.length,successWorkCount:successWorks,successDetailCount:successDetails,errorCount:errors.length,warningCount:warnings.length},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
-      $('importStatus').textContent=successWorks===0?'取込失敗':'取込完了'; $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} エラー:${errors.length} 警告:${warnings.length}`;
+      const skippedCount = importPlan.skippedWorks.length + importPlan.blockedOperations.length;
+      if (successWorks === 0) {
+        $('importStatus').textContent = '取込失敗';
+      } else if (warnings.length || errors.length || skippedCount > 0) {
+        $('importStatus').textContent = '一部取込完了';
+      } else {
+        $('importStatus').textContent = '取込完了';
+      }
+      $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} スキップ:${skippedCount} エラー:${errors.length} 警告:${warnings.length}`;
       renderMessages('importErrors', errors.map(e=>`行${e.row}: ${e.reason} (${e.summary})`)); renderMessages('importWarnings', warnings);
     } catch (e) {
-      console.error('[import] failed', e); fail(`取込失敗: ${e.message || e}`);
+      if (isPermissionDeniedError(e)) {
+        const ctx = await resolveImportContext();
+        const writeTargets = ['inspectionWork','inspectionItems','importBatches','operationLogs'];
+        console.error('[master-import] permission denied detail', { uid: ctx.uid, email: ctx.email, clientId: ctx.clientId, role: ctx.role, writeTargets, error: e });
+        fail('取込処理を実行できませんでした。取込対象の状態または操作権限を確認してください。');
+        return;
+      }
+      console.error('[import] failed', e); fail('取込処理中にエラーが発生しました。時間をおいて再試行してください。');
     }
     function fail(m){$('importStatus').textContent='取込失敗'; $('importResult').textContent=m;}
   }
