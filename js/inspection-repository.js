@@ -470,6 +470,65 @@
   };
 
 
+
+  function buildScanLog(input) {
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const ctx = window.appContext || {};
+    const eventType = input.eventType || input.result || 'scan';
+    const matchedType = input.matchedType || input.codeType || 'unknown';
+    const qty = Number(input.qty ?? input.inputQty ?? 0);
+    const beforeActualQty = input.beforeActualQty ?? input.beforeQty ?? null;
+    const afterActualQty = input.afterActualQty ?? input.afterQty ?? null;
+    const plannedQty = input.plannedQty ?? input.targetQty ?? null;
+    const userUid = input.userUid || input.userId || ctx.uid || null;
+    return {
+      ...input,
+      eventType,
+      result: input.result || eventType,
+      workId: input.workId || null,
+      scannedCode: String(input.scannedCode || ''),
+      matchedType,
+      codeType: input.codeType || matchedType,
+      itemId: input.itemId || null,
+      qty,
+      inputQty: input.inputQty ?? qty,
+      beforeActualQty,
+      beforeQty: input.beforeQty ?? beforeActualQty,
+      afterActualQty,
+      afterQty: input.afterQty ?? afterActualQty,
+      plannedQty,
+      targetQty: input.targetQty ?? plannedQty,
+      workerId: input.workerId || null,
+      workerNameSnapshot: input.workerNameSnapshot || null,
+      userUid,
+      userId: input.userId || userUid,
+      userEmail: input.userEmail || ctx.email || null,
+      clientId: getClientId(),
+      createdAt: input.createdAt || now,
+      scannedAt: input.scannedAt || now,
+    };
+  }
+  function buildOperationLog(input) {
+    const now = window.firebase.firestore.FieldValue.serverTimestamp();
+    const ctx = window.appContext || {};
+    return {
+      ...input,
+      eventType: input.eventType || input.operationType || 'operation',
+      targetType: input.targetType || 'inspectionWork',
+      targetId: input.targetId || '',
+      before: input.before || null,
+      after: input.after || null,
+      reason: input.reason || null,
+      workerId: input.workerId || null,
+      workerNameSnapshot: input.workerNameSnapshot || null,
+      userUid: input.userUid || input.userId || ctx.uid || null,
+      userEmail: input.userEmail || ctx.email || null,
+      clientId: getClientId(),
+      createdAt: input.createdAt || now,
+      operatedAt: input.operatedAt || now,
+    };
+  }
+
   window.commitScanResult = async function commitScanResult(payload) {
     if (!window.db || !window.firebase?.firestore) throw new Error('Firestore is not initialized.');
     const { workId, pickingNo, itemId, scannedCode, inputQty, beforeQty, afterQty, targetQty, workCompleted, worker, deviceId } = payload || {};
@@ -512,30 +571,10 @@
         updated_at: now
       }, { merge: true });
       const logRef = scanLogsRef().doc();
-      tx.set(logRef, {
-        logId: logRef.id, clientId: getClientId(), workId, pickingNo: pickingNo || work.pickingNo || work.picking_no || workId, scannedCode: String(scannedCode || ''),
-        codeType: 'unknown', result: 'success', errorMessage: '', inputQty: Number(inputQty || 0), beforeQty: Number(beforeQty || 0), afterQty: Number(afterQty || 0), targetQty: Number(targetQty || 0),
-        workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userId: worker?.userId || null, deviceId: deviceId || null, scannedAt: now
-      });
+      tx.set(logRef, buildScanLog({ logId: logRef.id, eventType: 'scan_success', result: 'success', workId, pickingNo: pickingNo || work.pickingNo || work.picking_no || workId, scannedCode: String(scannedCode || ''), matchedType: 'unknown', qty: Number(inputQty || 0), beforeActualQty: Number(beforeQty || 0), afterActualQty: Number(afterQty || 0), plannedQty: Number(targetQty || 0), workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userUid: worker?.userId || null, deviceId: deviceId || null, scannedAt: now }));
       if (workCompleted) {
         const opRef = operationLogsRef().doc();
-        tx.set(opRef, {
-          logId: opRef.id,
-          clientId: getClientId(),
-          operationType: 'complete',
-          targetType: 'inspectionWork',
-          targetId: workId,
-          workerId: worker?.workerId || null,
-          workerNameSnapshot: worker?.workerName || null,
-          userId: worker?.userId || null,
-          deviceId: deviceId || null,
-          detail: {
-            trigger: 'commit-scan-result',
-            scannedCode: String(scannedCode || ''),
-            detailId: itemId
-          },
-          operatedAt: now
-        });
+        tx.set(opRef, buildOperationLog({ logId: opRef.id, eventType: 'complete', operationType: 'complete', targetType: 'inspectionWork', targetId: workId, workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userUid: worker?.userId || null, deviceId: deviceId || null, after: { trigger: 'commit-scan-result', scannedCode: String(scannedCode || ''), detailId: itemId }, operatedAt: now }));
       }
     });
   };
@@ -547,6 +586,6 @@
     if (!workId) throw new Error('work_id is missing.');
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
     const ref=scanLogsRef().doc();
-    await ref.set({ logId: ref.id, clientId: getClientId(), workId, ...log, scannedAt: log.scannedAt || now });
+    await ref.set(buildScanLog({ logId: ref.id, workId, ...log, scannedAt: log.scannedAt || now }));
   };
 })();

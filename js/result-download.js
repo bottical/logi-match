@@ -42,32 +42,13 @@
     return getInspectionWorksRef().doc(workId).collection('items');
   }
   function getDeviceId() { return localStorage.getItem('deviceId') || localStorage.getItem('inspectionDeviceId') || ''; }
-  function parseLocalDate(value) {
-    const [year, month, day] = String(value || '').split('-').map(Number);
-    if (!year || !month || !day) return null;
-    return new Date(year, month - 1, day, 0, 0, 0, 0);
-  }
-  function formatDate(value) {
-    if (!(value instanceof Date)) return '';
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
-  }
-  function formatDateTime(value) {
+      function formatDateTime(value) {
     if (!value) return '';
     const date = typeof value.toDate === 'function' ? value.toDate() : value instanceof Date ? value : new Date(value);
     if (Number.isNaN(date.getTime())) return '';
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
   }
-  function buildDateRange(fromValue, toValue) {
-    if (!fromValue && !toValue) throw new Error('日付を指定してください。全期間の出力はできません。');
-    const start = parseLocalDate(fromValue || toValue);
-    const to = parseLocalDate(toValue || fromValue);
-    if (!start || !to) throw new Error('日付の指定が不正です。');
-    if (start.getTime() > to.getTime()) throw new Error('開始日は終了日以前で指定してください。');
-    const endExclusive = new Date(to);
-    endExclusive.setDate(endExclusive.getDate() + 1);
-    return { start, endExclusive, days: Math.round((endExclusive - start) / 86400000), from: formatDate(start), to: formatDate(to) };
-  }
-  function csvEscape(value) {
+    function csvEscape(value) {
     const s = value == null ? '' : String(value);
     if (/[",\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
@@ -83,10 +64,19 @@
   }
   const toYYYYMMDD = (v) => String(v || '').replaceAll('-', '');
   async function logDownload(detail) {
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const userUid = appCtx?.user?.uid || appCtx?.uid || '';
+    const userEmail = appCtx?.user?.email || appCtx?.email || '';
     await getOperationLogsRef().add({
+      eventType: 'download',
       operationType: 'download', targetType: 'result_download', targetId: detail.downloadType || '',
-      workerId: '', workerNameSnapshot: '', userId: appCtx?.user?.uid || '', deviceId: getDeviceId(), detail,
-      operatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      clientId: getClientId(),
+      userUid,
+      userEmail,
+      workerId: '', workerNameSnapshot: '', userId: userUid, deviceId: getDeviceId(), detail,
+      after: detail,
+      createdAt: now,
+      operatedAt: now,
     });
   }
   // Firestoreで複合インデックスが必要になる場合がある。
@@ -98,7 +88,7 @@
     return snap.docs;
   }
   async function exportCompleted(range) {
-    if (range.days > WORK_MAX_DAYS) throw new Error('完了日範囲は31日以内で指定してください。');
+    window.dateRangePolicy.assertRange(range, 'completed');
     const docs = await queryCompletedWorks(range);
     const rows = docs.map((doc) => {
       const w = doc.data() || {};
@@ -111,7 +101,7 @@
   }
   function resolveItemStatus(item, target, actual) { if (item.itemStatus) return item.itemStatus; if (actual >= target) return 'completed'; if (actual > 0) return 'working'; return 'unstarted'; }
   async function exportDetails(range) {
-    if (range.days > WORK_MAX_DAYS) throw new Error('完了日範囲は31日以内で指定してください。');
+    window.dateRangePolicy.assertRange(range, 'details');
     const works = await queryCompletedWorks(range);
     const rows = [];
     for (const workDoc of works) {
@@ -130,7 +120,7 @@
     showStatus(`CSVを出力しました。（${rows.length}件）`, 'success');
   }
   async function exportScanLogs(range) {
-    if (range.days > SCAN_MAX_DAYS) throw new Error('スキャンログはデータ量が多いため、7日以内で指定してください。');
+    window.dateRangePolicy.assertRange(range, 'scan');
     const snap = await getScanLogsRef().where('scannedAt', '>=', range.start).where('scannedAt', '<', range.endExclusive).orderBy('scannedAt', 'asc').limit(SCAN_FETCH_LIMIT + 1).get();
     if (snap.size > SCAN_FETCH_LIMIT) throw new Error('スキャンログ件数が多すぎます。期間を短くして再度出力してください。');
     const rows = snap.docs.map((doc) => { const l = doc.data() || {}; return [formatDateTime(l.scannedAt), l.scannedCode || '', l.codeType || '', l.currentPickingNo || '', l.pickingNo || '', l.result || '', l.errorMessage || '', l.inputQty || '', l.beforeQty || '', l.afterQty || '', l.targetQty || '', l.workerId || '', l.workerNameSnapshot || l.workerName || '', l.deviceId || '']; });
@@ -144,9 +134,9 @@
     setButtonsDisabled(true);
     showStatus('処理中です。しばらくお待ちください。');
     try {
-      if (type === 'completed') await exportCompleted(buildDateRange($('completedFrom')?.value, $('completedTo')?.value));
-      else if (type === 'details') await exportDetails(buildDateRange($('completedFrom')?.value, $('completedTo')?.value));
-      else await exportScanLogs(buildDateRange($('logFrom')?.value, $('logTo')?.value));
+      if (type === 'completed') await exportCompleted(window.dateRangePolicy.buildDateRange($('completedFrom')?.value, $('completedTo')?.value));
+      else if (type === 'details') await exportDetails(window.dateRangePolicy.buildDateRange($('completedFrom')?.value, $('completedTo')?.value));
+      else await exportScanLogs(window.dateRangePolicy.buildDateRange($('logFrom')?.value, $('logTo')?.value));
     } catch (e) {
       showStatus(e?.message || 'CSV出力に失敗しました。時間をおいて再度お試しください。', 'error');
     } finally {
@@ -159,7 +149,7 @@
     appCtx = ctx;
     window.renderSidebar?.();
     if (!getClientId()) throw new Error('テナント情報を取得できません。');
-    canUsePage = ctx.role === 'admin';
+    canUsePage = !!window.permissions?.hasPermission?.('download_results', ctx);
     if (!canUsePage) showStatus('このページを利用する権限がありません。', 'error');
     setButtonsDisabled(!canUsePage);
   }).catch(() => {

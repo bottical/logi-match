@@ -20,31 +20,23 @@
     if (['admin', 'worker', 'systemOwner'].includes(role)) return role;
     return null;
   }
-
-  function hasPageAccess(pageId, role) {
-    const normalized = normalizeRole(role);
-    const allowed = pagePermissions[pageId] || [];
-    return allowed.includes(normalized);
+  function hasPageAccess(pageId, role) { return (pagePermissions[pageId] || []).includes(normalizeRole(role)); }
+  function isAdmin(ctx) { return normalizeRole(ctx?.role) === 'admin'; }
+  function isSystemOwner(ctx) { return normalizeRole(ctx?.role) === 'systemOwner'; }
+  function hasPermission(permission, ctx) {
+    const role = normalizeRole((ctx || window.appContext || {}).role);
+    const map = {
+      view_inspection: ['admin', 'worker'], import_master: ['admin'], download_results: ['admin'], reset_completed: ['admin'],
+      force_unlock_work: ['admin', 'systemOwner'], manage_workers_internal: ['systemOwner'], manage_login_users_internal: ['systemOwner'], update_csv_mapping: ['admin'],
+    };
+    return (map[permission] || []).includes(role);
   }
-
-  function isAdmin(ctx) {
-    return normalizeRole(ctx?.role) === 'admin';
-  }
-
-  function isSystemOwner(ctx) {
-    return normalizeRole(ctx?.role) === 'systemOwner';
-  }
-
   window.permissions = {
-    pagePermissions,
-    normalizeRole,
-    hasPageAccess,
-    isAdmin,
-    isSystemOwner,
+    pagePermissions, normalizeRole, hasPageAccess, isAdmin, isSystemOwner, hasPermission,
     canViewAdminMenu: isAdmin,
-    canDownloadResults: isAdmin,
-    canUnlockCurrent: isAdmin,
-    canResetCompleted: isAdmin,
-    canEditCsvMapping: isAdmin,
+    canDownloadResults: (ctx) => hasPermission('download_results', ctx),
+    canUnlockCurrent: (ctx) => hasPermission('force_unlock_work', ctx),
+    canResetCompleted: (ctx) => hasPermission('reset_completed', ctx),
+    canEditCsvMapping: (ctx) => hasPermission('update_csv_mapping', ctx),
   };
 })();
