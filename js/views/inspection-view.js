@@ -6,8 +6,8 @@ export async function renderInspectionView(container) {
   const workId = params.get('work_id');
 
   const src = workId
-    ? `./inspection.html?shell=1&v=20260507-7&work_id=${encodeURIComponent(workId)}`
-    : './inspection.html?shell=1&v=20260507-7';
+    ? `./inspection.html?shell=1&v=20260513-1&work_id=${encodeURIComponent(workId)}`
+    : './inspection.html?shell=1&v=20260513-1';
 
   return renderFrameView(container, src, '検品実行');
 }
