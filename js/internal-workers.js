@@ -1,5 +1,5 @@
 (function(){
-  const ALLOWED_ROLES = ['systemOwner'];
+  const ALLOWED_ROLES = ['systemOwner', 'internal'];
   const esc = (v)=>String(v ?? '').replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
   const toNumber = (value)=>{
     if (value == null || value === '') return 0;
@@ -10,7 +10,7 @@
 
   function assertInternalRole(ctx) {
     const role = ctx?.role || window.appContext?.role;
-    if (!ALLOWED_ROLES.includes(role)) {
+    if (!ALLOWED_ROLES.includes(role) && !window.isInternalAdmin?.(ctx || window.appContext)) {
       throw new Error('この画面を利用する権限がありません。');
     }
   }
@@ -43,7 +43,7 @@
       const ctx = await window.appInit.ready(document.body.dataset.page);
       assertInternalRole(ctx);
       hasPermission = true;
-      tenantIdInput.value = ctx?.tenantId || ctx?.clientId || '';
+      tenantIdInput.value = ctx?.clientId || ctx?.tenantId || '';
     } catch (error) {
       console.error('[internal-workers] init failed', error);
       status.textContent = error?.message || '初期化に失敗しました。';

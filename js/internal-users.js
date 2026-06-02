@@ -9,7 +9,7 @@
     let ctx;
     try { ctx = await window.appInit.ready(document.body.dataset.page); }
     catch (error) { status.textContent = '初期設定に失敗しました。'; return; }
-    if (!window.permissions?.isSystemOwner(ctx)) return denyAccess();
+    if (!window.permissions?.isInternalAdmin?.(ctx) && !window.isInternalAdmin?.(ctx)) return denyAccess();
 
     const tbody = document.getElementById('memberRows');
     const clientIdInput = document.getElementById('clientId');

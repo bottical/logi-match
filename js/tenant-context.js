@@ -2,12 +2,19 @@
   const ctx = { uid:null,email:null,tenantId:null,clientId:null,role:null,displayName:null,tenantName:null,clientName:null,isSystemOwner:false };
   window.appContext = ctx;
 
+  const INTERNAL_ADMIN_ROLES = ['systemOwner', 'internal'];
+
   function normalizeClientRole(value) {
     const role = String(value || '').trim();
     if (role === 'operator') return 'worker';
     if (role === 'owner') return 'admin';
     if (role === 'admin' || role === 'worker') return role;
     return null;
+  }
+
+  function normalizeSystemRole(value) {
+    const role = String(value || '').trim();
+    return INTERNAL_ADMIN_ROLES.includes(role) ? role : null;
   }
 
   async function resolve(user){
@@ -17,8 +24,20 @@
     const uid = user.uid;
     const systemUserSnap = await window.db.collection('systemUsers').doc(uid).get();
     const systemUser = systemUserSnap.exists ? (systemUserSnap.data() || {}) : null;
-    if (systemUser && systemUser.isActive === true && systemUser.role === 'systemOwner') {
-      Object.assign(ctx, { uid, email: user.email || systemUser.email || null, displayName: systemUser.displayName || user.displayName || user.email || '', clientId: null, tenantId: null, role: 'systemOwner', isSystemOwner: true, clientName: null, tenantName: null });
+    const systemRole = normalizeSystemRole(systemUser?.role);
+    if (systemUser && systemUser.isActive === true && systemRole) {
+      const clientId = systemUser.clientId || systemUser.tenantId || null;
+      Object.assign(ctx, {
+        uid,
+        email: user.email || systemUser.email || null,
+        displayName: systemUser.displayName || user.displayName || user.email || '',
+        clientId,
+        tenantId: systemUser.tenantId || clientId,
+        role: systemRole,
+        isSystemOwner: systemRole === 'systemOwner',
+        clientName: systemUser.clientName || systemUser.tenantName || null,
+        tenantName: systemUser.tenantName || systemUser.clientName || null,
+      });
       return { ...ctx };
     }
 
