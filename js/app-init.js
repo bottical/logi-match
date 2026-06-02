@@ -30,18 +30,23 @@
         }
 
         const tenant = await window.tenantContext.resolve(user);
-        const paths = window.firestorePaths.createFirestorePaths(tenant);
         const role = tenant.role || tenant.userRole || 'worker';
+        const clientId = tenant.clientId || tenant.tenantId || null;
+        const tenantId = tenant.tenantId || tenant.clientId || null;
+        const isSystemOwner = role === 'systemOwner' || tenant.isSystemOwner === true;
+        const paths = clientId ? window.firestorePaths.createFirestorePaths({ ...tenant, clientId, tenantId }) : null;
 
         window.appContext = {
           ...(window.appContext || {}),
           ...(tenant || {}),
+          user,
           uid: user.uid,
           userId: user.uid,
-          email: user.email || null,
-          clientId: tenant.clientId || null,
-          tenantId: tenant.tenantId || tenant.clientId || null,
+          email: user.email || tenant.email || null,
+          clientId,
+          tenantId,
           role,
+          isSystemOwner,
           db,
           auth,
           paths,
@@ -55,9 +60,10 @@
           uid: user.uid,
           userId: user.uid,
           tenant,
-          tenantId: tenant.tenantId || tenant.clientId || null,
-          clientId: tenant.clientId || null,
+          tenantId,
+          clientId,
           role,
+          isSystemOwner,
           paths,
         };
       })();

@@ -9,6 +9,6 @@
   window.isInternalAdmin = function isInternalAdmin(ctx){
     const role = ctx?.role || null;
     const email = normalizeEmail(ctx?.email);
-    return role === 'systemOwner' || INTERNAL_ADMIN_EMAILS.includes(email);
+    return ctx?.isSystemOwner === true || ['systemOwner', 'internal'].includes(role) || INTERNAL_ADMIN_EMAILS.includes(email);
   };
 })();
