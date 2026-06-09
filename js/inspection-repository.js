@@ -87,9 +87,25 @@
     return clientRef().collection('operationLogs');
   }
 
+  function workersRef() {
+    const clientId = getClientId();
+    if (window.firestorePaths?.workers) {
+      return window.firestorePaths.workers(clientId);
+    }
+    const paths = getPaths();
+    if (typeof paths.workers === 'function') return paths.workers();
+    return clientRef().collection('workers');
+  }
+
+  function scanLogPayload(payload, scannedAt) {
+    // Firestore TTL は expiresAt を対象に設定する想定。既存scanLogsへの expiresAt 付与は別途移行スクリプトで対応する。
+    const ttlMs = 90 * 24 * 60 * 60 * 1000;
+    return { scannedAt: scannedAt || window.firebase.firestore.FieldValue.serverTimestamp(), expiresAt: new Date(Date.now() + ttlMs), ...payload };
+  }
+
   async function writeScanLog(payload) {
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
-    await scanLogsRef().add({ scannedAt: now, ...payload });
+    await scanLogsRef().add(scanLogPayload(payload, now));
   }
 
   function getCurrentUserId() {
@@ -224,6 +240,7 @@
           },
           updated_at: now
         },{merge:true});
+        tx.set(workersRef().doc(worker.workerId), { currentWorkId: workId, currentStartedAt: work.current_started_at || work.lock_acquired_at || now, currentDeviceId: work.current_device_id || worker.deviceId || null, lastWorkedAt: now, updatedAt: now }, { merge: true });
         return { ok: true, reason: 'same-worker' };
       }
 
@@ -252,6 +269,7 @@
           },
           updated_at: now
         }, { merge: true });
+        tx.set(workersRef().doc(worker.workerId), { currentWorkId: workId, currentStartedAt: now, currentDeviceId: worker.deviceId || null, lastWorkedAt: now, updatedAt: now }, { merge: true });
         return { ok: true, reason: 'acquired' };
       }
 
@@ -271,12 +289,12 @@
     const completedAtValue = now;
     return window.db.runTransaction(async (tx) => {
       const snap = await tx.get(workRef);
-      if (!snap.exists) { tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:workId,scannedCode,result:'not_found',errorMessage:'work not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return { ok:false, message:'work not found' }; }
+      if (!snap.exists) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:workId,scannedCode,result:'not_found',errorMessage:'work not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return { ok:false, message:'work not found' }; }
       const data=snap.data()||{}; const work=data.work||{}; const details=Array.isArray(data.details)?data.details:[];
-      if(work.status==='completed'){ tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'completed_work',errorMessage:'completed',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return {ok:false,message:'work is not current'};}
-      if(work.status!=='current') { tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'invalid',errorMessage:`work is not current: ${work.status || 'unknown'}`,codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return {ok:false,message:'work is not current'}; }
-      if(work.current_worker_id && work.current_worker_id!==workerId) { tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'lock owner mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return {ok:false,message:'lock owner mismatch'}; }
-      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) { tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'device mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return {ok:false,message:'device mismatch'}; }
+      if(work.status==='completed'){ tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'completed_work',errorMessage:'completed',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'work is not current'};}
+      if(work.status!=='current') { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'invalid',errorMessage:`work is not current: ${work.status || 'unknown'}`,codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'work is not current'}; }
+      if(work.current_worker_id && work.current_worker_id!==workerId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'lock owner mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'lock owner mismatch'}; }
+      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'device mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'device mismatch'}; }
       const norm=(v)=>String(v||'').trim();
       const tqty=(d)=>Number(d?.target_qty ?? d?.targetQty ?? 0);
       const aqty=(d)=>Number(d?.actual_qty ?? d?.actualQty ?? 0);
@@ -287,10 +305,10 @@
       for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='jan'&&k.value===code)){idx=i;codeType='jan';break;}}
       if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='alternative'&&k.value===code)){idx=i;codeType='alternative';break;}}}
       if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='slipNo'&&k.value===code)){idx=i;codeType='slipNo';break;}}}
-      if(idx<0) { tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'not_found',errorMessage:'not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return {ok:false,message:'not found'}; }
+      if(idx<0) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'not_found',errorMessage:'not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'not found'}; }
       const d=details[idx]; const before=aqty(d); const target=tqty(d); const after=before+Number(inputQty||0);
       const detailId = d.detail_id || d.itemId || null;
-      if(after>target) { tx.set(scanLogsRef().doc(),{clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now}); return {ok:false,message:'over qty'}; }
+      if(after>target) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'over qty'}; }
       d.actual_qty = after;
       d.actualQty = after;
       d.completed_flag = after>=target;
@@ -306,13 +324,14 @@
       if(completed){ work.completed_at = completedAtValue; work.completedAt = completedAtValue; work.completedWorkerId = workerId||work.current_worker_id||work.currentWorkerId||null; work.completedWorkerName = workerName||work.current_worker_name||work.currentWorkerName||null; work.current_worker_id=null; work.current_worker_name=null; work.current_login_uid=null; work.current_login_email=null; work.current_device_id=null; work.lock_acquired_at=null; work.current_started_at=null; work.currentWorkerId=null; work.currentWorkerName=null; work.currentDeviceId=null; work.lockAcquiredAt=null; }
       work.lastActivityAt=new Date().toISOString();
       tx.set(workRef,{details,work,status:work.status,actualQtyTotal:work.actualQtyTotal||0,lastActivityAt:new Date().toISOString(),updated_at:now,updatedAt:now,...(completed?{completedAt:completedAtValue,completed_at:completedAtValue,completedWorkerId:work.completedWorkerId||workerId||null,completedWorkerName:work.completedWorkerName||workerName||null,currentWorkerId:null,currentWorkerName:null,currentDeviceId:null}:{} )},{merge:true});
+      if (workerId) tx.set(workersRef().doc(workerId), completed ? { currentWorkId: null, currentStartedAt: null, currentDeviceId: null, lastWorkedAt: now, updatedAt: now } : { currentWorkId: workId, currentStartedAt: work.current_started_at || work.lock_acquired_at || now, currentDeviceId: work.current_device_id || deviceId || null, lastWorkedAt: now, updatedAt: now }, { merge: true });
       if (detailId) {
         const itemRef = inspectionItemsRef(workId).doc(detailId);
         tx.set(itemRef,{actualQty:after,itemStatus:after>=target?'completed':'partial',updatedAt:now}, {merge:true});
       }
       const logRef = scanLogsRef().doc();
       const logId = logRef.id;
-      tx.set(logRef,{logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,scannedAt:now});
+      tx.set(logRef,scanLogPayload({logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now));
       if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:getClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||d.itemId||null},operatedAt:now}); }
       return {ok:true,detailId:d.detail_id||d.itemId||null,state:{work,details}};
     });
@@ -357,6 +376,7 @@
         updated_at: now
       }
     }, { merge: true });
+    if (workerId) batch.set(workersRef().doc(workerId), { currentWorkId: null, currentStartedAt: null, currentDeviceId: null, lastWorkedAt: now, updatedAt: now }, { merge: true });
     const opRef = operationLogsRef().doc();
     batch.set(opRef, { logId: opRef.id, clientId: getClientId(), operationType: 'suspend', targetType: 'inspectionWork', targetId: workId, workerId: workerId || null, workerNameSnapshot: workerName || null, userId: userId || null, deviceId: deviceId || null, detail: { pickingNo: pickingNo || null }, operatedAt: now });
     await batch.commit();
@@ -413,6 +433,7 @@
       const inspectionRequired = !(data?.inspectionRequired === false || data?.inspection_required === false || Number(data?.target_qty ?? data?.targetQty ?? 0) === 0);
       batch.set(doc.ref, { actualQty: 0, actual_qty: 0, completed_flag: false, completedFlag: false, itemStatus: inspectionRequired ? 'unstarted' : 'excluded', updatedAt: now, updated_at: now }, { merge: true });
     });
+    if (workerId) batch.set(workersRef().doc(workerId), { currentWorkId: null, currentStartedAt: null, currentDeviceId: null, lastWorkedAt: now, updatedAt: now }, { merge: true });
     const opRef = operationLogsRef().doc();
     batch.set(opRef, { logId: opRef.id, clientId: getClientId(), operationType: 'reset', targetType: 'inspectionWork', targetId: workId, workerId: workerId || null, workerNameSnapshot: workerName || null, userId: userId || null, deviceId: deviceId || null, detail: { pickingNo: pickingNo || null }, operatedAt: now });
     await batch.commit();
@@ -506,6 +527,7 @@
       clientId: getClientId(),
       createdAt: input.createdAt || now,
       scannedAt: input.scannedAt || now,
+      expiresAt: input.expiresAt || new Date(Date.now() + (90 * 24 * 60 * 60 * 1000)),
     };
   }
   function buildOperationLog(input) {
@@ -560,6 +582,7 @@
       work.lastActivityAt = new Date().toISOString();
       if (workCompleted) { work.completedAt = now; work.completed_at = now; }
       tx.set(workRef, { details, work, status: work.status, actualQtyTotal: work.actualQtyTotal || 0, lastActivityAt: new Date().toISOString(), updated_at: now, updatedAt: now, ...(workCompleted ? { completedAt: now, completed_at: now, completedWorkerId: worker?.workerId || null, completedWorkerName: worker?.workerName || null, currentWorkerId: null, currentWorkerName: null, currentDeviceId: null } : {}) }, { merge: true });
+      if (worker?.workerId) tx.set(workersRef().doc(worker.workerId), workCompleted ? { currentWorkId: null, currentStartedAt: null, currentDeviceId: null, lastWorkedAt: now, updatedAt: now } : { currentWorkId: workId, currentStartedAt: work.current_started_at || work.lock_acquired_at || now, currentDeviceId: deviceId || null, lastWorkedAt: now, updatedAt: now }, { merge: true });
       const itemRef = inspectionItemsRef(workId).doc(String(itemId));
       tx.set(itemRef, {
         actualQty: nextQty,

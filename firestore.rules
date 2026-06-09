@@ -18,6 +18,13 @@ service cloud.firestore {
     function clientRole(clientId) { return get(/databases/$(database)/documents/clients/$(clientId)/users/$(request.auth.uid)).data.role; }
     function isClientAdmin(clientId) { return belongsToClient(clientId) && clientRole(clientId) == 'admin'; }
     function isClientWorker(clientId) { return belongsToClient(clientId) && clientRole(clientId) == 'worker'; }
+    // 作業者個別ログインではなく、所属ユーザーが画面上で作業者を選択する運用のため、
+    // 作業状態の同期フィールドだけは同一client所属ユーザーによる更新を許可する。
+    function isWorkerStateUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'currentWorkId', 'currentStartedAt', 'currentDeviceId', 'lastWorkedAt', 'updatedAt'
+      ]);
+    }
 
     match /systemUsers/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
@@ -43,7 +50,8 @@ service cloud.firestore {
       }
       match /workers/{workerId} {
         allow read: if belongsToClient(clientId) || isSystemOwner();
-        allow create, update: if isSystemOwner();
+        allow create: if isSystemOwner();
+        allow update: if isSystemOwner() || (belongsToClient(clientId) && isWorkerStateUpdate());
         allow delete: if false;
       }
       match /csvMapping/{docId} {
