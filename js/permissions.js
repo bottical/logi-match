@@ -12,6 +12,7 @@
     'csv-mapping': ['admin'],
     'internal-users': INTERNAL_ADMIN_ROLES,
     'internal-workers': INTERNAL_ADMIN_ROLES,
+    diagnostics: INTERNAL_ADMIN_ROLES,
   };
 
   function normalizeRole(value) {
