@@ -43,6 +43,16 @@
       const latestStatus = latest.status || latest.work?.status;
       if (latestStatus !== 'current') throw new Error('対象作業は現在作業中ではありません');
       tx.set(workRef, payload, { merge: true });
+      const workerId = workDoc.currentWorkerId || workDoc.current_worker_id || workDoc.workerId || null;
+      if (workerId) {
+        tx.set(window.firestorePaths.workers(clientId).doc(workerId), {
+          currentWorkId: null,
+          currentStartedAt: null,
+          currentDeviceId: null,
+          lastWorkedAt: now,
+          updatedAt: now,
+        }, { merge: true });
+      }
     });
 
     const opRef = window.firestorePaths.operationLogs(clientId).doc();
@@ -87,36 +97,16 @@
   const clientId = window.appContext.clientId || window.appContext.tenantId;
   const workersSnap = await window.firestorePaths.workers(clientId).get();
 
-  let currentWorksSnap = await window.firestorePaths.inspectionWorks(clientId).where('status', '==', 'current').get();
-  const currentDocs = [];
-  currentWorksSnap.forEach((doc) => {
-    currentDocs.push({ id: doc.id, data: doc.data() || {} });
-  });
-  // 旧データ互換:
-  // status がトップレベルではなく work.status にのみ存在するデータを暫定補完する。
-  // データ移行完了後、この全件取得フォールバックは削除する。
-  if (currentDocs.length === 0) {
-    const allSnap = await window.firestorePaths.inspectionWorks(clientId).get();
-    allSnap.forEach((doc) => {
-      const data = doc.data() || {};
-      if (data.work?.status === 'current') currentDocs.push({ id: doc.id, data });
-    });
-  }
-
-  const currentByWorkerId = new Map();
-  currentDocs.forEach(({ id, data }) => {
-    const workerId = data.currentWorkerId || data.current_worker_id || data.work?.current_worker_id;
-    if (workerId) currentByWorkerId.set(workerId, { ...data, __docId: id });
-  });
-
+  // 通常表示では inspectionWorks を全件取得しない。
+  // 作業中情報は workers 側に同期される currentWorkId/currentStartedAt を正とする。
   bodyEl.innerHTML = '';
   workersSnap.forEach((doc) => {
     const worker = doc.data() || {};
     const workerId = worker.workerId || doc.id;
-    const current = currentByWorkerId.get(workerId);
-    const workId = current?.__docId || current?.work_id || current?.work?.work_id || '-';
-    const startedAt = current?.lockAcquiredAt || current?.work?.current_started_at || '-';
+    const workId = worker.currentWorkId || worker.current_work_id || '-';
+    const startedAt = worker.currentStartedAt || worker.current_started_at || '-';
     const lastWorkedAt = worker.lastWorkedAt || worker.lastActivityAt || worker.updatedAt || '-';
+    const current = workId !== '-' ? { ...worker, __docId: workId, currentWorkerId: workerId, currentWorkerName: worker.workerName || null } : null;
 
     const disabled = worker.isActive === false || worker.active === false;
     const tr = document.createElement('tr');

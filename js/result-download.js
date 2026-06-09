@@ -1,6 +1,8 @@
 (function () {
   const WORK_MAX_DAYS = 31;
   const WORK_FETCH_LIMIT = 2000;
+  const DETAIL_WORK_FETCH_LIMIT = 100;
+  const DETAIL_ITEM_CONCURRENCY = 5;
   const SCAN_MAX_DAYS = 7;
   const SCAN_FETCH_LIMIT = 9999;
   const $ = (id) => document.getElementById(id);
@@ -82,9 +84,9 @@
   // Firestoreで複合インデックスが必要になる場合がある。
   // inspectionWorks: status Asc, completedAt Asc
   // Firebase Console にインデックス作成リンクが出た場合は、その内容に従って作成する。
-  async function queryCompletedWorks(range) {
-    const snap = await getInspectionWorksRef().where('status', '==', 'completed').where('completedAt', '>=', range.start).where('completedAt', '<', range.endExclusive).orderBy('completedAt', 'asc').limit(WORK_FETCH_LIMIT + 1).get();
-    if (snap.size > WORK_FETCH_LIMIT) throw new Error('対象件数が多すぎます。期間を短くして再度出力してください。');
+  async function queryCompletedWorks(range, limit = WORK_FETCH_LIMIT, limitMessage = '対象件数が多すぎます。期間を短くして再度出力してください。') {
+    const snap = await getInspectionWorksRef().where('status', '==', 'completed').where('completedAt', '>=', range.start).where('completedAt', '<', range.endExclusive).orderBy('completedAt', 'asc').limit(limit + 1).get();
+    if (snap.size > limit) throw new Error(limitMessage);
     return snap.docs;
   }
   async function exportCompleted(range) {
@@ -100,23 +102,38 @@
     showStatus(`CSVを出力しました。（${rows.length}件）`, 'success');
   }
   function resolveItemStatus(item, target, actual) { if (item.itemStatus) return item.itemStatus; if (actual >= target) return 'completed'; if (actual > 0) return 'working'; return 'unstarted'; }
+  async function runInBatches(items, size, worker) {
+    const results = [];
+    for (let i = 0; i < items.length; i += size) {
+      const settled = await Promise.allSettled(items.slice(i, i + size).map(worker));
+      results.push(...settled);
+      showStatus(`明細CSVを取得中です。大量出力は非推奨です。（${Math.min(i + size, items.length)}/${items.length}作業）`);
+    }
+    return results;
+  }
   async function exportDetails(range) {
     window.dateRangePolicy.assertRange(range, 'details');
-    const works = await queryCompletedWorks(range);
+    const works = await queryCompletedWorks(range, DETAIL_WORK_FETCH_LIMIT, `明細CSVの対象作業が${DETAIL_WORK_FETCH_LIMIT}件を超えています。明細CSVは大量出力非推奨のため、期間を短くして再度出力してください。`);
+    showStatus(`明細CSVを取得中です。大量出力は非推奨です。（対象${works.length}作業、同時取得${DETAIL_ITEM_CONCURRENCY}件まで）`);
     const rows = [];
-    for (const workDoc of works) {
+    const results = await runInBatches(works, DETAIL_ITEM_CONCURRENCY, async (workDoc) => {
       const work = workDoc.data() || {};
       const itemSnap = await getInspectionWorkItemsRef(workDoc.id).get();
+      const workRows = [];
       itemSnap.forEach((itemDoc) => {
         const item = itemDoc.data() || {};
         const target = Number(item.targetQty ?? 0);
         const actual = Number(item.actualQty ?? 0);
-        rows.push([work.pickingNo || '', item.jan || '', item.alternativeCode || '', item.productName || '', target, actual, actual - target, item.inspectionRequired === false ? '検品対象外' : '検品対象', resolveItemStatus(item, target, actual), work.destinationName || '', work.slipNo || '', work.shipDate || '', work.shipperName || '', work.location || item.location || '', work.importFileName || '', formatDateTime(work.completedAt)]);
+        workRows.push([work.pickingNo || '', item.jan || '', item.alternativeCode || '', item.productName || '', target, actual, actual - target, item.inspectionRequired === false ? '検品対象外' : '検品対象', resolveItemStatus(item, target, actual), work.destinationName || '', work.slipNo || '', work.shipDate || '', work.shipperName || '', work.location || item.location || '', work.importFileName || '', formatDateTime(work.completedAt)]);
       });
-    }
+      return workRows;
+    });
+    const rejected = results.filter((r) => r.status === 'rejected');
+    if (rejected.length) throw new Error(`明細取得に失敗した作業が${rejected.length}件あります。期間を短くして再度お試しください。`);
+    results.forEach((r) => { if (r.status === 'fulfilled') rows.push(...r.value); });
     if (!rows.length) throw new Error('対象データがありません。日付条件を確認してください。');
     downloadCsv(`inspection_details_${toYYYYMMDD(range.from)}_${toYYYYMMDD(range.to)}.csv`, ['ピッキングNo.', 'JAN', '代替コード', '商品名', '予定数量', '実績数量', '差異', '区分', 'ステータス', 'お届け先名', '伝票番号', '出荷日', '荷主名', 'ロケーション', '取込ファイル名', '完了時刻'], rows);
-    await logDownload({ downloadType: 'details', from: range.from, to: range.to, workCount: works.length, rowCount: rows.length });
+    await logDownload({ downloadType: 'details', from: range.from, to: range.to, workCount: works.length, rowCount: rows.length, workLimit: DETAIL_WORK_FETCH_LIMIT });
     showStatus(`CSVを出力しました。（${rows.length}件）`, 'success');
   }
   async function exportScanLogs(range) {
