@@ -29,6 +29,10 @@ service cloud.firestore {
         'currentWorkId', 'currentStartedAt', 'currentDeviceId', 'lastWorkedAt', 'updatedAt'
       ]);
     }
+    function isScanLogExpiresAtOnlyUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['expiresAt'])
+        && request.resource.data.expiresAt is timestamp;
+    }
 
     match /systemUsers/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
@@ -83,7 +87,8 @@ service cloud.firestore {
       match /scanLogs/{logId} {
         allow read: if isClientAdmin(clientId) || isInternalAdmin();
         allow create: if belongsToClient(clientId);
-        allow update, delete: if false;
+        allow update: if isSystemOwner() && isScanLogExpiresAtOnlyUpdate();
+        allow delete: if false;
       }
       match /operationLogs/{logId} {
         allow read: if isClientAdmin(clientId) || isSystemOwner();
