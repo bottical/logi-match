@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>scanLogs expiresAt補正</title>
+  <link rel="stylesheet" href="css/inspection.css?v=20260513-1">
+  <link rel="stylesheet" href="css/diagnostics.css?v=20260609-2">
+  <link rel="icon" href="./assets/brand/favicon.ico" sizes="any">
+</head>
+<body class="inspection-page" data-page="scanlog-ttl-migration">
+  <main class="diagnostics-page">
+    <section class="panel">
+      <h1>scanLogs expiresAt補正</h1>
+      <p class="diagnostics-warning"><strong>一時的な本番補正画面:</strong> systemOwnerのみ利用できます。Firestore TTL policyの有効化は行いません。</p>
+      <p id="authStatus" class="diagnostics-status">認証・権限を確認しています…</p>
+      <div class="diagnostics-grid migration-grid">
+        <label>clientId（必須）<input id="clientId" autocomplete="off" placeholder="補正対象clientId"></label>
+        <label>最大取得件数
+          <select id="maxDocs">
+            <option value="100" selected>100</option><option value="500">500</option><option value="1000">1,000</option>
+            <option value="5000">5,000</option><option value="10000">10,000</option><option value="20000">20,000</option>
+          </select>
+        </label>
+        <label>最大更新件数
+          <select id="maxUpdates">
+            <option value="10" selected>10</option><option value="100">100</option><option value="500">500</option>
+            <option value="1000">1,000</option><option value="5000">5,000</option>
+          </select>
+        </label>
+        <label>ページサイズ
+          <select id="pageSize">
+            <option value="100" selected>100</option><option value="250">250</option><option value="500">500</option>
+          </select>
+        </label>
+      </div>
+      <p id="estimate" class="diagnostics-estimate"></p>
+      <label class="diagnostics-confirm"><input id="dryRun" type="checkbox" checked> dry-run（ONの間はFirestoreへの更新を一切行いません）</label>
+      <label class="diagnostics-confirm"><input id="safetyConfirm" type="checkbox"> dry-runから段階的に実行し、TTL policyはこの画面で有効化されないことを確認しました</label>
+      <label class="diagnostics-confirm"><input id="executeConfirm" type="checkbox"> 表示された対象パス・最大推定read/write件数・実行モードを確認しました</label>
+      <label class="diagnostics-confirm">確認のためclientIdを再入力 <input id="clientIdConfirm" autocomplete="off"></label>
+      <div id="liveUpdateGuard" class="migration-live-guard" hidden>
+        <label>本更新の確認文字列（完全一致）<input id="updatePhrase" autocomplete="off" placeholder="UPDATE_EXPIRES_AT"></label>
+      </div>
+      <div class="diagnostics-actions">
+        <button id="runMigration" class="primary-action" type="button" disabled>dry-runを実行</button>
+        <button id="copyMarkdown" class="secondary-action" type="button" disabled>Markdownをコピー</button>
+        <button id="copyJson" class="secondary-action" type="button" disabled>JSONをコピー</button>
+        <button id="downloadMarkdown" class="secondary-action" type="button" disabled>Markdownを保存</button>
+        <button id="downloadJson" class="secondary-action" type="button" disabled>JSONを保存</button>
+      </div>
+      <p id="runStatus" class="diagnostics-status"></p>
+    </section>
+    <section class="panel diagnostics-output-panel">
+      <h2>補正結果</h2>
+      <pre id="reportOutput">未実行</pre>
+    </section>
+  </main>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/internal-auth.js"></script>
+  <script src="js/tenant-context.js"></script>
+  <script src="js/permissions.js"></script>
+  <script src="js/firestore-paths.js?v=20260513-1"></script>
+  <script src="js/app-init.js?v=20260513-1"></script>
+  <script src="js/scanlog-ttl-migration.js?v=20260609-1"></script>
+</body>
+</html>
