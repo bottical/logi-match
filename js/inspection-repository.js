@@ -1,4 +1,7 @@
 (function () {
+  const SCAN_LOG_TTL_DAYS = 90;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
   function getWorkIdFromState(state) {
     return state?.work?.work_id;
   }
@@ -97,15 +100,22 @@
     return clientRef().collection('workers');
   }
 
-  function scanLogPayload(payload, scannedAt) {
-    // Firestore TTL は expiresAt を対象に設定する想定。既存scanLogsへの expiresAt 付与は別途移行スクリプトで対応する。
-    const ttlMs = 90 * 24 * 60 * 60 * 1000;
-    return { scannedAt: scannedAt || window.firebase.firestore.FieldValue.serverTimestamp(), expiresAt: new Date(Date.now() + ttlMs), ...payload };
+  function scanLogTimestamps() {
+    const scannedAt = new Date();
+    return {
+      scannedAt,
+      createdAt: scannedAt,
+      expiresAt: new Date(scannedAt.getTime() + (SCAN_LOG_TTL_DAYS * DAY_MS))
+    };
+  }
+
+  function scanLogPayload(payload) {
+    // 必須のTTL項目をpayloadより後に設定し、すべてのscanLogs作成経路で欠落・上書きを防ぐ。
+    return { ...payload, ...scanLogTimestamps() };
   }
 
   async function writeScanLog(payload) {
-    const now = window.firebase.firestore.FieldValue.serverTimestamp();
-    await scanLogsRef().add(scanLogPayload(payload, now));
+    await scanLogsRef().add(scanLogPayload(payload));
   }
 
   function getCurrentUserId() {
@@ -289,12 +299,12 @@
     const completedAtValue = now;
     return window.db.runTransaction(async (tx) => {
       const snap = await tx.get(workRef);
-      if (!snap.exists) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:workId,scannedCode,result:'not_found',errorMessage:'work not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return { ok:false, message:'work not found' }; }
+      if (!snap.exists) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:workId,scannedCode,result:'not_found',errorMessage:'work not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return { ok:false, message:'work not found' }; }
       const data=snap.data()||{}; const work=data.work||{}; const details=Array.isArray(data.details)?data.details:[];
-      if(work.status==='completed'){ tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'completed_work',errorMessage:'completed',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'work is not current'};}
-      if(work.status!=='current') { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'invalid',errorMessage:`work is not current: ${work.status || 'unknown'}`,codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'work is not current'}; }
-      if(work.current_worker_id && work.current_worker_id!==workerId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'lock owner mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'lock owner mismatch'}; }
-      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'device mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'device mismatch'}; }
+      if(work.status==='completed'){ tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'completed_work',errorMessage:'completed',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'work is not current'};}
+      if(work.status!=='current') { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'invalid',errorMessage:`work is not current: ${work.status || 'unknown'}`,codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'work is not current'}; }
+      if(work.current_worker_id && work.current_worker_id!==workerId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'lock owner mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'lock owner mismatch'}; }
+      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'device mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'device mismatch'}; }
       const norm=(v)=>String(v||'').trim();
       const tqty=(d)=>Number(d?.target_qty ?? d?.targetQty ?? 0);
       const aqty=(d)=>Number(d?.actual_qty ?? d?.actualQty ?? 0);
@@ -305,10 +315,10 @@
       for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='jan'&&k.value===code)){idx=i;codeType='jan';break;}}
       if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='alternative'&&k.value===code)){idx=i;codeType='alternative';break;}}}
       if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='slipNo'&&k.value===code)){idx=i;codeType='slipNo';break;}}}
-      if(idx<0) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'not_found',errorMessage:'not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'not found'}; }
+      if(idx<0) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'not_found',errorMessage:'not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'not found'}; }
       const d=details[idx]; const before=aqty(d); const target=tqty(d); const after=before+Number(inputQty||0);
       const detailId = d.detail_id || d.itemId || null;
-      if(after>target) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now)); return {ok:false,message:'over qty'}; }
+      if(after>target) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'over qty'}; }
       d.actual_qty = after;
       d.actualQty = after;
       d.completed_flag = after>=target;
@@ -331,7 +341,7 @@
       }
       const logRef = scanLogsRef().doc();
       const logId = logRef.id;
-      tx.set(logRef,scanLogPayload({logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}, now));
+      tx.set(logRef,scanLogPayload({logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}));
       if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:getClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||d.itemId||null},operatedAt:now}); }
       return {ok:true,detailId:d.detail_id||d.itemId||null,state:{work,details}};
     });
@@ -493,7 +503,6 @@
 
 
   function buildScanLog(input) {
-    const now = window.firebase.firestore.FieldValue.serverTimestamp();
     const ctx = window.appContext || {};
     const eventType = input.eventType || input.result || 'scan';
     const matchedType = input.matchedType || input.codeType || 'unknown';
@@ -525,9 +534,7 @@
       userId: input.userId || userUid,
       userEmail: input.userEmail || ctx.email || null,
       clientId: getClientId(),
-      createdAt: input.createdAt || now,
-      scannedAt: input.scannedAt || now,
-      expiresAt: input.expiresAt || new Date(Date.now() + (90 * 24 * 60 * 60 * 1000)),
+      ...scanLogTimestamps()
     };
   }
   function buildOperationLog(input) {
