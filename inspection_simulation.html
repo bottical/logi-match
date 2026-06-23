@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物流倉庫 検品生産性比較シミュレーター</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+        body {
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+        }
+        .conveyor-belt {
+            background-image: repeating-linear-gradient(90deg, #e5e7eb, #e5e7eb 10px, #d1d5db 10px, #d1d5db 20px);
+            animation: moveBelt 2s linear infinite;
+        }
+        .conveyor-belt.paused {
+            animation-play-state: paused;
+        }
+        @keyframes moveBelt {
+            0% { background-position: 0 0; }
+            100% { background-position: 40px 0; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+    <!-- Header -->
+    <header class="bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-5 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-white/20 p-2.5 rounded-lg">
+                    <!-- Box icon -->
+                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">物流倉庫 検品生産性比較シミュレーター</h1>
+                    <p class="text-blue-100 text-sm mt-0.5">一括検品（RFID / 複数同時カメラ） vs バラ検品（1品スキャン）のコスト・時間シミュレーション</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2 text-xs bg-white/10 px-3 py-1.5 rounded-full border border-white/20">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>シミュレーション環境稼働中</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        
+        <!-- Parameter Settings & Quick Summary -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left Side: Parameter Panel -->
+            <div class="lg:col-span-4 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col gap-6">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-900 border-b pb-2 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                        シミュレーション条件設定
+                    </h2>
+                </div>
+
+                <!-- Common Settings -->
+                <div class="space-y-4">
+                    <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">共通条件</h3>
+                    
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-700">総検品対象（出荷・入荷個数）</label>
+                            <span class="text-sm font-bold text-indigo-600"><span id="val-totalItems">1000</span> 個</span>
+                        </div>
+                        <input type="range" id="param-totalItems" min="100" max="5000" step="100" value="1000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-700">作業スタッフ人数</label>
+                            <span class="text-sm font-bold text-indigo-600"><span id="val-staffCount">1</span> 名</span>
+                        </div>
+                        <input type="range" id="param-staffCount" min="1" max="10" step="1" value="1" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-700">スタッフの想定時給</label>
+                            <span class="text-sm font-bold text-indigo-600"><span id="val-hourlyWage">1,200</span> 円</span>
+                        </div>
+                        <input type="range" id="param-hourlyWage" min="1000" max="2500" step="50" value="1200" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                    </div>
+                </div>
+
+                <hr class="border-slate-100">
+
+                <!-- Single Inspection Settings -->
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">バラ検品（1点スキャン）</h3>
+                    </div>
+                    
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">1点あたりスキャン時間</label>
+                            <span class="text-sm font-bold text-amber-600"><span id="val-singleScanTime">3.0</span> 秒</span>
+                        </div>
+                        <input type="range" id="param-singleScanTime" min="0.1" max="5.0" step="0.1" value="3.0" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                        <p class="text-[10px] text-slate-400 mt-1">※荷物を持つ・バーコードを探す・置く作業を含む</p>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">読み取りエラー率（不鮮明・汚れ等）</label>
+                            <span class="text-sm font-bold text-amber-600"><span id="val-singleErrorRate">2.0</span> %</span>
+                        </div>
+                        <input type="range" id="param-singleErrorRate" min="0" max="10" step="0.5" value="2.0" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">エラー時のロスタイム（1件あたり）</label>
+                            <span class="text-sm font-bold text-amber-600"><span id="val-singleErrorDelay">15</span> 秒</span>
+                        </div>
+                        <input type="range" id="param-singleErrorDelay" min="5" max="60" step="5" value="15" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                    </div>
+                </div>
+
+                <hr class="border-slate-100">
+
+                <!-- Bulk Inspection Settings -->
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-700">一括検品（RFID / 一括カメラ）</h3>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">1箱（バッチ）最大検品数</label>
+                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkSize">10</span> 個</span>
+                        </div>
+                        <input type="range" id="param-bulkSize" min="1" max="30" step="1" value="10" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                        <p class="text-[10px] text-slate-400 mt-1">※1回のスキャン（または1箱）に含める個数</p>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">1回あたりの準備時間（配置・移動）</label>
+                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkPrepTime">6.0</span> 秒</span>
+                        </div>
+                        <input type="range" id="param-bulkPrepTime" min="1.0" max="15.0" step="0.5" value="6.0" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">一括スキャン自体の実行時間</label>
+                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkScanTime">1.5</span> 秒</span>
+                        </div>
+                        <input type="range" id="param-bulkScanTime" min="0.1" max="5.0" step="0.1" value="1.5" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">個体ごとの読み取りエラー率</label>
+                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkErrorRate">1</span> %</span>
+                        </div>
+                        <input type="range" id="param-bulkErrorRate" min="0" max="15" step="1" value="1" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <label class="text-sm font-medium text-slate-600">エラー品の手戻り・再確認ロス</label>
+                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkErrorDelay">30</span> 秒</span>
+                        </div>
+                        <input type="range" id="param-bulkErrorDelay" min="10" max="120" step="5" value="30" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Simulation and Results -->
+            <div class="lg:col-span-8 flex flex-col gap-6">
+                
+                <!-- Quick Metric Summary Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
+                        <span class="text-xs font-semibold text-amber-800 uppercase tracking-wider">バラ検品予測</span>
+                        <div class="mt-2 flex items-baseline gap-2">
+                            <span class="text-3xl font-extrabold text-amber-900" id="res-singleTime">-</span>
+                            <span class="text-xs text-amber-700 font-medium">分</span>
+                        </div>
+                        <div class="text-xs text-amber-700 mt-2 flex flex-col gap-1 border-t border-amber-200/50 pt-2">
+                            <div class="flex justify-between">
+                                <span>処理能力 (UPH):</span>
+                                <span class="font-bold text-amber-900" id="res-singleUPH">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>想定人件費:</span>
+                                <span class="font-bold text-amber-900" id="res-singleCost">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-5 shadow-sm">
+                        <span class="text-xs font-semibold text-emerald-800 uppercase tracking-wider">一括検品予測</span>
+                        <div class="mt-2 flex items-baseline gap-2">
+                            <span class="text-3xl font-extrabold text-emerald-900" id="res-bulkTime">-</span>
+                            <span class="text-xs text-emerald-700 font-medium">分</span>
+                        </div>
+                        <div class="text-xs text-emerald-700 mt-2 flex flex-col gap-1 border-t border-emerald-200/50 pt-2">
+                            <div class="flex justify-between">
+                                <span>処理能力 (UPH):</span>
+                                <span class="font-bold text-emerald-900" id="res-bulkUPH">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>想定人件費:</span>
+                                <span class="font-bold text-emerald-900" id="res-bulkCost">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-900 text-white rounded-2xl p-5 shadow-md flex flex-col justify-between">
+                        <div>
+                            <span class="text-xs font-semibold text-indigo-200 uppercase tracking-wider">生産性向上（時間短縮）</span>
+                            <div class="mt-2 flex items-baseline gap-2">
+                                <span class="text-4xl font-extrabold text-white" id="res-improvement">-</span>
+                                <span class="text-xs text-indigo-200 font-medium">倍</span>
+                            </div>
+                        </div>
+                        <div class="text-xs mt-2 border-t border-indigo-800 pt-2 text-indigo-100 flex flex-col gap-1">
+                            <div class="flex justify-between">
+                                <span>削減コスト:</span>
+                                <span class="font-bold text-emerald-300" id="res-savedCost">-</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>削減時間:</span>
+                                <span class="font-bold text-emerald-300" id="res-savedTime">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Simulation Animation Box -->
+                <div class="bg-slate-900 text-white rounded-2xl shadow-md p-6 border border-slate-800">
+                    <div class="flex justify-between items-center mb-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-3 h-3 rounded-full bg-red-500 animate-ping"></div>
+                            <h3 class="font-bold text-slate-200">リアルタイム進捗シミュレーター</h3>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="btn-start" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>
+                                開始
+                            </button>
+                            <button id="btn-reset" class="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-slate-200 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 19.5L19 17.25"></path></svg>
+                                リセット
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Simulator Tracks -->
+                    <div class="space-y-6">
+                        <!-- Single Track -->
+                        <div>
+                            <div class="flex justify-between items-center text-xs text-slate-400 mb-1">
+                                <span class="font-semibold text-amber-400 flex items-center gap-1">
+                                    <span class="w-2 h-2 rounded-full bg-amber-400"></span> バラ検品ライン
+                                </span>
+                                <span id="sim-singleProgress">進捗: 0 / 1000個 (0.0%)</span>
+                            </div>
+                            
+                            <!-- Track Visual -->
+                            <div class="relative bg-slate-850 h-20 rounded-xl overflow-hidden border border-slate-700 flex items-center">
+                                <!-- Conveyor Belt Track Background -->
+                                <div id="belt-single" class="conveyor-belt paused absolute inset-0 opacity-15 h-full w-full"></div>
+                                
+                                <!-- Scanner Area Visual -->
+                                <div class="absolute right-1/4 top-0 bottom-0 w-16 bg-gradient-to-r from-transparent via-amber-500/20 to-transparent border-x border-amber-500/30 flex items-center justify-center">
+                                    <div id="laser-single" class="w-0.5 h-full bg-amber-500 shadow-[0_0_8px_#f59e0b] opacity-0 transition-opacity duration-75"></div>
+                                    <span class="absolute top-1 text-[8px] text-amber-400 font-mono tracking-widest uppercase">SCANNER</span>
+                                </div>
+
+                                <!-- Flowing Items (Simulated with JS) -->
+                                <div id="items-single-container" class="absolute inset-0 flex items-center justify-start px-4 gap-4 overflow-hidden">
+                                    <!-- Dynamic items inserted here -->
+                                </div>
+                            </div>
+                            <!-- Live stats -->
+                            <div class="mt-1 flex justify-between text-[10px] text-slate-500">
+                                <span>作業員: カチカチと1点ずつスキャン</span>
+                                <span>エラー発生時: 一時停止し再スキャン</span>
+                            </div>
+                        </div>
+
+                        <!-- Bulk Track -->
+                        <div>
+                            <div class="flex justify-between items-center text-xs text-slate-400 mb-1">
+                                <span class="font-semibold text-emerald-400 flex items-center gap-1">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span> 一括検品ライン (RFIDゲート)
+                                </span>
+                                <span id="sim-bulkProgress">進捗: 0 / 1000個 (0.0%)</span>
+                            </div>
+                            
+                            <!-- Track Visual -->
+                            <div class="relative bg-slate-850 h-20 rounded-xl overflow-hidden border border-slate-700 flex items-center">
+                                <!-- Conveyor Belt Track Background -->
+                                <div id="belt-bulk" class="conveyor-belt paused absolute inset-0 opacity-15 h-full w-full"></div>
+                                
+                                <!-- Scanner Area Visual (RFID Gate style) -->
+                                <div class="absolute right-1/4 top-0 bottom-0 w-24 bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent border-x border-emerald-500/30 flex items-center justify-center">
+                                    <div id="laser-bulk" class="w-2 h-full bg-emerald-500/30 border-x border-emerald-400 shadow-[0_0_12px_#10b981] opacity-0 transition-opacity duration-75"></div>
+                                    <span class="absolute top-1 text-[8px] text-emerald-400 font-mono tracking-widest uppercase">RFID GATE</span>
+                                </div>
+
+                                <!-- Flowing Bulk Items (Simulated with JS) -->
+                                <div id="items-bulk-container" class="absolute inset-0 flex items-center justify-start px-4 gap-6 overflow-hidden">
+                                    <!-- Dynamic bulk boxes inserted here -->
+                                </div>
+                            </div>
+                            <!-- Live stats -->
+                            <div class="mt-1 flex justify-between text-[10px] text-slate-500">
+                                <span>作業員: まとめてゲートを通過（一瞬で一括検品）</span>
+                                <span>エラー発生時: 該当箱を別ラインに除けて個別確認</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Graphs and Analytics -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    
+                    <!-- Time/Cost Chart Card -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+                        <h3 class="font-bold text-slate-900 text-sm mb-4">総所要時間と人件費の比較</h3>
+                        <div class="h-64 relative">
+                            <canvas id="productivityChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Detail Data Table / Breakdown -->
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col justify-between">
+                        <div>
+                            <h3 class="font-bold text-slate-900 text-sm mb-3">シミュレーション計算内訳</h3>
+                            <div class="divide-y divide-slate-100 text-xs">
+                                <div class="py-2.5 flex justify-between">
+                                    <span class="text-slate-500">項目</span>
+                                    <span class="font-medium text-slate-800">バラ検品 vs 一括検品</span>
+                                </div>
+                                <div class="py-2.5 flex justify-between">
+                                    <span class="text-slate-500">1個あたり平均処理時間</span>
+                                    <span class="font-semibold text-slate-800">
+                                        <span class="text-amber-600" id="tbl-singleAvg">0.0</span>秒 / 
+                                        <span class="text-emerald-600" id="tbl-bulkAvg">0.0</span>秒
+                                    </span>
+                                </div>
+                                <div class="py-2.5 flex justify-between">
+                                    <span class="text-slate-500">スキャン回数（総数に対して）</span>
+                                    <span class="font-semibold text-slate-800">
+                                        <span class="text-amber-600" id="tbl-singleScans">0</span>回 / 
+                                        <span class="text-emerald-600" id="tbl-bulkScans">0</span>回
+                                    </span>
+                                </div>
+                                <div class="py-2.5 flex justify-between">
+                                    <span class="text-slate-500">期待されるエラー発生件数</span>
+                                    <span class="font-semibold text-slate-800">
+                                        <span class="text-amber-600" id="tbl-singleErrorCount">0</span>件 / 
+                                        <span class="text-emerald-600" id="tbl-bulkErrorCount">0</span>件
+                                    </span>
+                                </div>
+                                <div class="py-2.5 flex justify-between">
+                                    <span class="text-slate-500">エラー処理に伴う総ロス時間</span>
+                                    <span class="font-semibold text-slate-800">
+                                        <span class="text-amber-600" id="tbl-singleErrorTime">0</span>秒 / 
+                                        <span class="text-emerald-600" id="tbl-bulkErrorTime">0</span>秒
+                                    </span>
+                                </div>
+                                <div class="py-2.5 flex justify-between">
+                                    <span class="text-slate-500">検品スタッフ総拘束時間</span>
+                                    <span class="font-semibold text-slate-800">
+                                        <span class="text-amber-600" id="tbl-singleTotalTime">0</span>分 / 
+                                        <span class="text-emerald-600" id="tbl-bulkTotalTime">0</span>分
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Mini Investment Return calculation -->
+                        <div class="mt-4 p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-900">
+                            <span class="font-bold flex items-center gap-1 mb-1">
+                                <svg class="w-4 h-4 text-indigo-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 8h6m-5 0a3 3 0 110 6H9l3 3m-3-6h6m6 1a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                導入シミュレーションメモ（投資回収）
+                            </span>
+                            <p class="text-slate-600 leading-relaxed">
+                                もし一括検品システム（RFIDゲート等）を <span class="font-bold text-slate-900">120万円</span> で導入した場合、現在の作業量・コストペースで運用すると、およそ <span class="font-bold text-indigo-700" id="res-roiDays">-</span> 回の検品処理（または日数）でシステム導入コストを回収できる計算です。
+                            </p>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Practical Knowledge section -->
+        <section class="mt-12 bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:p-8">
+            <h2 class="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+                実務者のための「検品手法」導入ガイド & ナレッジ
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Single Inspection Info -->
+                <div class="border border-slate-100 bg-slate-50/50 rounded-xl p-5">
+                    <span class="px-2 py-1 bg-amber-100 text-amber-800 text-xs font-semibold rounded-md">バラ検品（バーコード）</span>
+                    <h3 class="font-bold text-slate-900 mt-3 mb-2">特徴と適合シーン</h3>
+                    <ul class="text-xs text-slate-600 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li><strong>メリット:</strong> 導入コストが安価（数万円のハンドスキャナのみ）。誰でも直感的に作業可能。確実な1点確認ができる。</li>
+                        <li><strong>デメリット:</strong> 数量が多いほど比例して時間（人件費）がかかる。大量出荷時はボトルネックになりやすい。</li>
+                        <li><strong>最適シーン:</strong> 出荷数・アイテム数が少ない倉庫、商材が大きく多様、または不定期・多品種小ロットのピッキング現場。</li>
+                    </ul>
+                </div>
+
+                <!-- Bulk Inspection Info -->
+                <div class="border border-slate-100 bg-slate-50/50 rounded-xl p-5">
+                    <span class="px-2 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-md">一括検品（RFID / 一括カメラ）</span>
+                    <h3 class="font-bold text-slate-900 mt-3 mb-2">特徴と適合シーン</h3>
+                    <ul class="text-xs text-slate-600 space-y-2 list-disc pl-4 leading-relaxed">
+                        <li><strong>メリット:</strong> 劇的な時間短縮。段ボール箱を開けずに外側から一瞬で検品可能。人手を最小限に抑制できる。</li>
+                        <li><strong>デメリット:</strong> RFIDタグのコスト（1枚数円〜十数円）、専用読み取りゲート等のシステム初期投資費用が高い。金属や水分を多く含む商材は電波干渉を受けやすい。</li>
+                        <li><strong>最適シーン:</strong> アパレル、高級化粧品、電子機器など、単価が高く大量に流通する商材。ケース単位での入出荷が多い倉庫。</li>
+                    </ul>
+                </div>
+
+                <!-- Strategic Advice -->
+                <div class="border border-indigo-100 bg-indigo-50/20 rounded-xl p-5">
+                    <span class="px-2 py-1 bg-indigo-100 text-indigo-800 text-xs font-semibold rounded-md">検討のポイント</span>
+                    <h3 class="font-bold text-slate-900 mt-3 mb-2">一括検品導入へのチェックステップ</h3>
+                    <ol class="text-xs text-slate-600 space-y-2 list-decimal pl-4 leading-relaxed">
+                        <li><strong>商材の「電波/視認適合性」:</strong> RFIDであれば金属・液体でないか。カメラ一括スキャンであればバーコードが整然と露出しているか。</li>
+                        <li><strong>サプライチェーン全体でのタグ貼付:</strong> 製造元（仕入先）でRFIDタグを貼ってもらう「ソースタギング」が可能か。自社貼付だとその作業工数が新たなコストに。</li>
+                        <li><strong>投資対効果 (ROI) の算出:</strong> 本シミュレーターのように、削減できる「総人件費」と「システム初期費用＋資材費(タグ代)」を比較し、現実的な期間で回収できるか。</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="bg-slate-900 text-slate-400 text-center py-6 border-t border-slate-800 mt-12 text-xs">
+        <p>&copy; 物流倉庫 生産性シミュレーターツール - 実務データに基づく理論値モデル</p>
+    </footer>
+
+    <!-- JavaScript logic -->
+    <script>
+        // DOM Elements
+        const params = {
+            totalItems: document.getElementById('param-totalItems'),
+            staffCount: document.getElementById('param-staffCount'),
+            hourlyWage: document.getElementById('param-hourlyWage'),
+            singleScanTime: document.getElementById('param-singleScanTime'),
+            singleErrorRate: document.getElementById('param-singleErrorRate'),
+            singleErrorDelay: document.getElementById('param-singleErrorDelay'),
+            bulkSize: document.getElementById('param-bulkSize'),
+            bulkPrepTime: document.getElementById('param-bulkPrepTime'),
+            bulkScanTime: document.getElementById('param-bulkScanTime'),
+            bulkErrorRate: document.getElementById('param-bulkErrorRate'),
+            bulkErrorDelay: document.getElementById('param-bulkErrorDelay'),
+        };
+
+        const vals = {
+            totalItems: document.getElementById('val-totalItems'),
+            staffCount: document.getElementById('val-staffCount'),
+            hourlyWage: document.getElementById('val-hourlyWage'),
+            singleScanTime: document.getElementById('val-singleScanTime'),
+            singleErrorRate: document.getElementById('val-singleErrorRate'),
+            singleErrorDelay: document.getElementById('val-singleErrorDelay'),
+            bulkSize: document.getElementById('val-bulkSize'),
+            bulkPrepTime: document.getElementById('val-bulkPrepTime'),
+            bulkScanTime: document.getElementById('val-bulkScanTime'),
+            bulkErrorRate: document.getElementById('val-bulkErrorRate'),
+            bulkErrorDelay: document.getElementById('val-bulkErrorDelay'),
+        };
+
+        const res = {
+            singleTime: document.getElementById('res-singleTime'),
+            singleUPH: document.getElementById('res-singleUPH'),
+            singleCost: document.getElementById('res-singleCost'),
+            bulkTime: document.getElementById('res-bulkTime'),
+            bulkUPH: document.getElementById('res-bulkUPH'),
+            bulkCost: document.getElementById('res-bulkCost'),
+            improvement: document.getElementById('res-improvement'),
+            savedCost: document.getElementById('res-savedCost'),
+            savedTime: document.getElementById('res-savedTime'),
+            roiDays: document.getElementById('res-roiDays')
+        };
+
+        const tbl = {
+            singleAvg: document.getElementById('tbl-singleAvg'),
+            bulkAvg: document.getElementById('tbl-bulkAvg'),
+            singleScans: document.getElementById('tbl-singleScans'),
+            bulkScans: document.getElementById('tbl-bulkScans'),
+            singleErrorCount: document.getElementById('tbl-singleErrorCount'),
+            bulkErrorCount: document.getElementById('tbl-bulkErrorCount'),
+            singleErrorTime: document.getElementById('tbl-singleErrorTime'),
+            bulkErrorTime: document.getElementById('tbl-bulkErrorTime'),
+            singleTotalTime: document.getElementById('tbl-singleTotalTime'),
+            bulkTotalTime: document.getElementById('tbl-bulkTotalTime')
+        };
+
+        // Sim Control Buttons
+        const btnStart = document.getElementById('btn-start');
+        const btnReset = document.getElementById('btn-reset');
+
+        // Sim Progress Elements
+        const simSingleProgress = document.getElementById('sim-singleProgress');
+        const simBulkProgress = document.getElementById('sim-bulkProgress');
+        const itemsSingleContainer = document.getElementById('items-single-container');
+        const itemsBulkContainer = document.getElementById('items-bulk-container');
+        const beltSingle = document.getElementById('belt-single');
+        const beltBulk = document.getElementById('belt-bulk');
+        const laserSingle = document.getElementById('laser-single');
+        const laserBulk = document.getElementById('laser-bulk');
+
+        // Chart Object
+        let productivityChart = null;
+
+        // Simulation State
+        let isSimulating = false;
+        let simInterval = null;
+        let singleSimulatedProgress = 0;
+        let bulkSimulatedProgress = 0;
+        let simSpeedFactor = 10; // アニメーション加速用
+
+        // Utility to format currency
+        function formatCurrency(val) {
+            return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(Math.round(val));
+        }
+
+        // Calculation Logic
+        function calculateProductivity() {
+            // Read inputs
+            const totalItems = parseInt(params.totalItems.value);
+            const staffCount = parseInt(params.staffCount.value);
+            const hourlyWage = parseInt(params.hourlyWage.value);
+            
+            const singleScan = parseFloat(params.singleScanTime.value);
+            const singleErrorRate = parseFloat(params.singleErrorRate.value) / 100;
+            const singleErrorDelay = parseInt(params.singleErrorDelay.value);
+
+            const bulkSize = parseInt(params.bulkSize.value);
+            const bulkPrep = parseFloat(params.bulkPrepTime.value);
+            const bulkScan = parseFloat(params.bulkScanTime.value);
+            const bulkErrorRate = parseFloat(params.bulkErrorRate.value) / 100;
+            const bulkErrorDelay = parseInt(params.bulkErrorDelay.value);
+
+            // 1. Single Scan Calculation
+            // Total scans is equal to total items
+            const singleScans = totalItems;
+            const singleExpectedErrors = totalItems * singleErrorRate;
+            const singleErrorTime = singleExpectedErrors * singleErrorDelay;
+            // Base time to scan all items
+            const singleBaseTime = totalItems * singleScan;
+            // Total time in seconds (divided by staff count since work is split)
+            const singleTotalSec = (singleBaseTime + singleErrorTime) / staffCount;
+            const singleTotalMin = singleTotalSec / 60;
+            const singleUPH = (totalItems / (singleTotalSec / 3600));
+            const singleCost = (singleTotalSec / 3600) * hourlyWage * staffCount;
+
+            // 2. Bulk Scan Calculation
+            // Total batches required
+            const totalBatches = Math.ceil(totalItems / bulkSize);
+            // Preparation and scan time per batch
+            const bulkBatchBaseTime = bulkPrep + bulkScan;
+            const bulkBaseTime = totalBatches * bulkBatchBaseTime;
+            // Error expectation (error is per-item, requiring manual lookup time)
+            const bulkExpectedErrors = totalItems * bulkErrorRate;
+            const bulkErrorTime = bulkExpectedErrors * bulkErrorDelay;
+            // Total bulk time in seconds (divided by staff count)
+            const bulkTotalSec = (bulkBaseTime + bulkErrorTime) / staffCount;
+            const bulkTotalMin = bulkTotalSec / 60;
+            const bulkUPH = (totalItems / (bulkTotalSec / 3600));
+            const bulkCost = (bulkTotalSec / 3600) * hourlyWage * staffCount;
+
+            // Improvements & Savings
+            const speedImprovement = singleTotalSec / bulkTotalSec;
+            const savedTimeMin = Math.max(0, singleTotalMin - bulkTotalMin);
+            const savedCost = Math.max(0, singleCost - bulkCost);
+
+            // Output to UI
+            res.singleTime.textContent = singleTotalMin.toFixed(1);
+            res.singleUPH.textContent = Math.round(singleUPH).toLocaleString();
+            res.singleCost.textContent = formatCurrency(singleCost);
+
+            res.bulkTime.textContent = bulkTotalMin.toFixed(1);
+            res.bulkUPH.textContent = Math.round(bulkUPH).toLocaleString();
+            res.bulkCost.textContent = formatCurrency(bulkCost);
+
+            res.improvement.textContent = speedImprovement.toFixed(1);
+            res.savedCost.textContent = formatCurrency(savedCost);
+            res.savedTime.textContent = `${Math.floor(savedTimeMin)}分${Math.round((savedTimeMin % 1) * 60)}秒`;
+
+            // ROI Days Calculation (Assuming 1.2M JPY system cost, how many full runs)
+            const systemCost = 1200000;
+            const savingsPerRun = savedCost;
+            if (savingsPerRun > 0) {
+                const requiredRuns = Math.ceil(systemCost / savingsPerRun);
+                res.roiDays.textContent = requiredRuns.toLocaleString();
+            } else {
+                res.roiDays.textContent = '計算不可（差益なし）';
+            }
+
+            // Table Breakdown
+            tbl.singleAvg.textContent = (singleTotalSec * staffCount / totalItems).toFixed(2);
+            tbl.bulkAvg.textContent = (bulkTotalSec * staffCount / totalItems).toFixed(2);
+            tbl.singleScans.textContent = singleScans.toLocaleString();
+            tbl.bulkScans.textContent = totalBatches.toLocaleString();
+            tbl.singleErrorCount.textContent = singleExpectedErrors.toFixed(1);
+            tbl.bulkErrorCount.textContent = bulkExpectedErrors.toFixed(1);
+            tbl.singleErrorTime.textContent = Math.round(singleErrorTime).toLocaleString();
+            tbl.bulkErrorTime.textContent = Math.round(bulkErrorTime).toLocaleString();
+            tbl.singleTotalTime.textContent = singleTotalMin.toFixed(1);
+            tbl.bulkTotalTime.textContent = bulkTotalMin.toFixed(1);
+
+            // Update Chart
+            updateChart(singleTotalMin, bulkTotalMin, singleCost, bulkCost);
+        }
+
+        // Sync values
+        function syncParams() {
+            vals.totalItems.textContent = parseInt(params.totalItems.value).toLocaleString();
+            vals.staffCount.textContent = params.staffCount.value;
+            vals.hourlyWage.textContent = parseInt(params.hourlyWage.value).toLocaleString();
+            vals.singleScanTime.textContent = parseFloat(params.singleScanTime.value).toFixed(1);
+            vals.singleErrorRate.textContent = parseFloat(params.singleErrorRate.value).toFixed(1);
+            vals.singleErrorDelay.textContent = params.singleErrorDelay.value;
+            vals.bulkSize.textContent = params.bulkSize.value;
+            vals.bulkPrepTime.textContent = parseFloat(params.bulkPrepTime.value).toFixed(1);
+            vals.bulkScanTime.textContent = parseFloat(params.bulkScanTime.value).toFixed(1);
+            vals.bulkErrorRate.textContent = parseInt(params.bulkErrorRate.value); // 1%刻みのため整数表示
+            vals.bulkErrorDelay.textContent = params.bulkErrorDelay.value;
+
+            calculateProductivity();
+        }
+
+        // Chart initialization & update
+        function updateChart(singleTime, bulkTime, singleCost, bulkCost) {
+            const ctx = document.getElementById('productivityChart').getContext('2d');
+            
+            if (productivityChart) {
+                productivityChart.destroy();
+            }
+
+            productivityChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['総所要時間 (分)', '人件費 (円)'],
+                    datasets: [
+                        {
+                            label: 'バラ検品',
+                            data: [singleTime.toFixed(1), Math.round(singleCost)],
+                            backgroundColor: 'rgba(245, 158, 11, 0.75)',
+                            borderColor: 'rgb(217, 119, 6)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: '一括検品',
+                            data: [bulkTime.toFixed(1), Math.round(bulkCost)],
+                            backgroundColor: 'rgba(16, 185, 129, 0.75)',
+                            borderColor: 'rgb(5, 150, 105)',
+                            borderWidth: 1,
+                            yAxisID: 'y'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: {
+                                    family: 'Noto Sans JP',
+                                    size: 11
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: '時間(分) / コスト(円)',
+                                font: {
+                                    family: 'Noto Sans JP',
+                                    size: 10
+                                }
+                            },
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            },
+                            grid: {
+                                color: '#f1f5f9'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Live Simulation Animation Loop
+        function initSimulation() {
+            // Reset state
+            singleSimulatedProgress = 0;
+            bulkSimulatedProgress = 0;
+            itemsSingleContainer.innerHTML = '';
+            itemsBulkContainer.innerHTML = '';
+            
+            simSingleProgress.textContent = `進捗: 0 / ${params.totalItems.value}個 (0.0%)`;
+            simBulkProgress.textContent = `進捗: 0 / ${params.totalItems.value}個 (0.0%)`;
+            
+            beltSingle.classList.add('paused');
+            beltBulk.classList.add('paused');
+            laserSingle.classList.add('opacity-0');
+            laserBulk.classList.add('opacity-0');
+        }
+
+        function createSingleItem(isError = false) {
+            const item = document.createElement('div');
+            item.className = `flex-none w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xs shadow-md transition-all duration-300 transform translate-x-full`;
+            if (isError) {
+                item.className += ' bg-rose-500 border-2 border-rose-600 text-white animate-bounce';
+                item.innerHTML = '⚠️';
+            } else {
+                item.className += ' bg-slate-700 border border-slate-600 text-slate-300';
+                item.innerHTML = '📦';
+            }
+            return item;
+        }
+
+        function createBulkBox(itemCount, isError = false) {
+            const box = document.createElement('div');
+            box.className = `flex-none w-20 h-12 bg-amber-800 border-2 border-amber-900 rounded-lg flex flex-col items-center justify-center text-[10px] text-amber-100 shadow-lg relative transform translate-x-full transition-all duration-500`;
+            if (isError) {
+                box.className += ' border-red-500 ring-2 ring-red-500/50';
+                box.innerHTML = `<span class="font-bold text-red-300">⚠️ 要確認</span><span class="text-[8px]">${itemCount}個中エラー</span>`;
+            } else {
+                box.innerHTML = `<span class="font-semibold">📦 RFID箱</span><span class="text-[8px] opacity-85">${itemCount}個入</span>`;
+            }
+            return box;
+        }
+
+        function startSimulation() {
+            if (isSimulating) {
+                // Pause / Stop
+                clearInterval(simInterval);
+                isSimulating = false;
+                btnStart.innerHTML = `<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>再開`;
+                beltSingle.classList.add('paused');
+                beltBulk.classList.add('paused');
+                return;
+            }
+
+            isSimulating = true;
+            btnStart.innerHTML = `<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>一時停止`;
+            
+            beltSingle.classList.remove('paused');
+            beltBulk.classList.remove('paused');
+
+            const totalItems = parseInt(params.totalItems.value);
+            const staffCount = parseInt(params.staffCount.value);
+            
+            const singleScan = parseFloat(params.singleScanTime.value);
+            const singleErrRate = parseFloat(params.singleErrorRate.value) / 100;
+            const singleErrDelay = parseInt(params.singleErrorDelay.value);
+
+            const bulkSize = parseInt(params.bulkSize.value);
+            const bulkPrep = parseFloat(params.bulkPrepTime.value);
+            const bulkScan = parseFloat(params.bulkScanTime.value);
+            const bulkErrRate = parseFloat(params.bulkErrorRate.value) / 100;
+            const bulkErrDelay = parseInt(params.bulkErrorDelay.value);
+
+            // 1ステップあたりのシミュレーション論理時間 (秒)
+            const dt = 0.5 * simSpeedFactor; 
+
+            // カウンター
+            let singleTimer = 0;
+            let bulkTimer = 0;
+            let singleDelayActive = 0;
+            let bulkDelayActive = 0;
+
+            simInterval = setInterval(() => {
+                // 1. バラ検品の進行
+                if (singleSimulatedProgress < totalItems) {
+                    if (singleDelayActive > 0) {
+                        singleDelayActive -= dt;
+                    } else {
+                        singleTimer += dt;
+                        // 1個スキャン完了相当の時間経過
+                        if (singleTimer >= (singleScan / staffCount)) {
+                            singleTimer = 0;
+                            // エラー判定
+                            const isError = Math.random() < singleErrRate;
+                            if (isError) {
+                                singleDelayActive = singleErrDelay;
+                                // エラー品表示
+                                const errorItem = createSingleItem(true);
+                                itemsSingleContainer.appendChild(errorItem);
+                                laserSingle.classList.remove('opacity-0');
+                                setTimeout(() => laserSingle.classList.add('opacity-0'), 250);
+                            } else {
+                                singleSimulatedProgress++;
+                                const okItem = createSingleItem(false);
+                                itemsSingleContainer.appendChild(okItem);
+                                // スキャンレーザー照射
+                                laserSingle.classList.remove('opacity-0');
+                                setTimeout(() => {
+                                    laserSingle.classList.add('opacity-0');
+                                    okItem.classList.remove('translate-x-full');
+                                    okItem.classList.add('bg-emerald-600', 'border-emerald-500', 'text-white');
+                                    okItem.innerHTML = '✓';
+                                }, 150);
+                            }
+                            
+                            // コンテナ内アイテム数の制限（最大表示数）
+                            if (itemsSingleContainer.children.length > 12) {
+                                itemsSingleContainer.removeChild(itemsSingleContainer.firstChild);
+                            }
+                        }
+                    }
+                    const pct = ((singleSimulatedProgress / totalItems) * 100).toFixed(1);
+                    simSingleProgress.textContent = `進捗: ${singleSimulatedProgress} / ${totalItems}個 (${pct}%) ${singleDelayActive > 0 ? '⚠️手戻り対応中...' : ''}`;
+                } else {
+                    beltSingle.classList.add('paused');
+                    simSingleProgress.innerHTML = `<span class="text-emerald-400 font-bold">✓ 完了</span>`;
+                }
+
+                // 2. 一括検品の進行
+                if (bulkSimulatedProgress < totalItems) {
+                    if (bulkDelayActive > 0) {
+                        bulkDelayActive -= dt;
+                    } else {
+                        bulkTimer += dt;
+                        const batchCycleTime = (bulkPrep + bulkScan) / staffCount;
+                        if (bulkTimer >= batchCycleTime) {
+                            bulkTimer = 0;
+                            // 今回のスキャン個数
+                            const currentBatchSize = Math.min(bulkSize, totalItems - bulkSimulatedProgress);
+                            
+                            // このバッチ内でエラーが起きるか判定 (個数に応じた確率)
+                            let batchHasError = false;
+                            for (let i = 0; i < currentBatchSize; i++) {
+                                if (Math.random() < bulkErrRate) {
+                                    batchHasError = true;
+                                    break;
+                                }
+                            }
+
+                            if (batchHasError) {
+                                bulkDelayActive = bulkErrDelay;
+                                const errorBox = createBulkBox(currentBatchSize, true);
+                                itemsBulkContainer.appendChild(errorBox);
+                                laserBulk.classList.remove('opacity-0');
+                                setTimeout(() => laserBulk.classList.add('opacity-0'), 400);
+                            } else {
+                                bulkSimulatedProgress += currentBatchSize;
+                                const okBox = createBulkBox(currentBatchSize, false);
+                                itemsBulkContainer.appendChild(okBox);
+                                laserBulk.classList.remove('opacity-0');
+                                setTimeout(() => {
+                                    laserBulk.classList.add('opacity-0');
+                                    okBox.classList.remove('translate-x-full');
+                                    okBox.className = okBox.className.replace('bg-amber-800', 'bg-emerald-600').replace('border-amber-900', 'border-emerald-500');
+                                    okBox.innerHTML = `<span class="font-bold">✓ OK</span><span class="text-[8px]">${currentBatchSize}個検品完了</span>`;
+                                }, 300);
+                            }
+
+                            if (itemsBulkContainer.children.length > 6) {
+                                itemsBulkContainer.removeChild(itemsBulkContainer.firstChild);
+                            }
+                        }
+                    }
+                    const pct = ((bulkSimulatedProgress / totalItems) * 100).toFixed(1);
+                    simBulkProgress.textContent = `進捗: ${bulkSimulatedProgress} / ${totalItems}個 (${pct}%) ${bulkDelayActive > 0 ? '⚠️除外・手作業確認中...' : ''}`;
+                } else {
+                    beltBulk.classList.add('paused');
+                    simBulkProgress.innerHTML = `<span class="text-emerald-400 font-bold">✓ 完了</span>`;
+                }
+
+                // 両方完了したら停止
+                if (singleSimulatedProgress >= totalItems && bulkSimulatedProgress >= totalItems) {
+                    clearInterval(simInterval);
+                    isSimulating = false;
+                    btnStart.innerHTML = `<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>開始`;
+                }
+
+            }, 100);
+        }
+
+        // Attach Event Listeners
+        Object.values(params).forEach(param => {
+            param.addEventListener('input', syncParams);
+        });
+
+        btnStart.addEventListener('click', startSimulation);
+        btnReset.addEventListener('click', () => {
+            if (isSimulating) {
+                clearInterval(simInterval);
+                isSimulating = false;
+                btnStart.innerHTML = `<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd"></path></svg>開始`;
+            }
+            initSimulation();
+        });
+
+        // Initialize App
+        syncParams();
+        initSimulation();
+
+    </script>
+</body>
+</html>
