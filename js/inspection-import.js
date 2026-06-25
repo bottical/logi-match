@@ -37,7 +37,7 @@
 
   function mapHeaders(headers){ const map={}; Object.entries(window.csvUtils.HEADER_ALIASES).forEach(([k,aliases])=>{ const i=headers.findIndex(h=>aliases.includes((h||'').trim())); if(i>=0) map[k]=i;}); return map; }
   const FIELD_LABELS={work_id:'ピッキングNo.',main_barcode:'JAN',alt_code:'代替コード',slip_no:'伝票番号',target_qty:'数量',product_name:'商品名',recipient_name:'お届け先名',shipment_date:'出荷日',shipper_name:'荷主名',location:'ロケーション',excluded_flag:'対象外フラグ',product_id:'商品ID'};
-  const reasonMessages={NORMALIZED_CHARACTER:'使用できない可能性のある文字を置換して取り込みました。',INVALID_CHARACTER:'使用できない文字が含まれています。',MISSING_REQUIRED_FIELD:'必須項目が空欄です。',INVALID_QUANTITY:'数量が正の整数または0ではありません。',MISSING_BARCODE_FIELD:'JANまたは代替コードのどちらか一方は必須です。',COLUMN_OUT_OF_RANGE:'CSVマッピング設定に誤りがあります。',ROW_PARSE_ERROR:'CSV行のパースに失敗しました。',RECOMMENDED_FIELD_EMPTY:'推奨項目が空欄です。取込は継続しました。',PICKING_SKIPPED:'ピッキングNo.単位でスキップされました。',ENCODING_REPLACEMENT_CHAR:'読み込み後のCSVに置換文字が含まれています。',ZERO_QUANTITY_SKIPPED:'数量0のため取込対象外としてスキップしました。',EXCLUDED_FLAG_ON:'対象外フラグONの行は取込できません。',DUPLICATE_SCAN_KEY:'同一ピッキングNo.内で検品キーが重複しています。'};
+  const reasonMessages={NORMALIZED_CHARACTER:'使用できない可能性のある文字を置換して取り込みました。',INVALID_CHARACTER:'使用できない文字が含まれています。',MISSING_REQUIRED_FIELD:'必須項目が空欄です。',INVALID_QUANTITY:'数量が正の整数または0ではありません。',MISSING_BARCODE_FIELD:'JANまたは代替コードのどちらか一方は必須です。',COLUMN_OUT_OF_RANGE:'CSVマッピング設定に誤りがあります。',ROW_PARSE_ERROR:'CSV行のパースに失敗しました。',RECOMMENDED_FIELD_EMPTY:'推奨項目が空欄です。取込は継続しました。',PICKING_SKIPPED:'ピッキングNo.単位でスキップされました。',ENCODING_REPLACEMENT_CHAR:'読み込み後のCSVに置換文字が含まれています。',ZERO_QUANTITY_SKIPPED:'数量0のため取込対象外としてスキップしました。',EXCLUDED_FLAG_ON:'対象外フラグONの行は取込できません。'};
   function formatReplacements(replacements){
     return replacements.map(({from,to})=>`「${from}」→「${to}」`).join('、');
   }
@@ -127,9 +127,6 @@
         if(inspectSlipNo && !o.slip_no) return ng('MISSING_REQUIRED_FIELD','伝票番号',o.slip_no,'伝票番号は必須です。');
         o.product_id=o.product_id||`AUTO-${o.work_id}-${n}`; o.product_name=o.product_name||''; o.recipient_name=o.recipient_name||''; o.target_qty=q; o.scan_code=o.main_barcode||o.alt_code; o.row_number=n; valid.push(o);
       });
-      const scanKeyDupMap = new Map();
-      valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; scanKeyDupMap.set(key,(scanKeyDupMap.get(key)||0)+1); });
-      valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; if((scanKeyDupMap.get(key)||0)>1){ fatalPickingNos.add(workId); errors.push(makeIssue('error','DUPLICATE_SCAN_KEY',o.row_number,workId,'JAN・代替コード',scanKey,scanKey,'同一ピッキングNo.内で検品キーが重複しています。')); } });
       if(fatalPickingNos.size){
         [...fatalPickingNos].forEach(pickingNo=>{
           const total=errors.filter(e=>e.pickingNo===pickingNo).length;
