@@ -271,8 +271,10 @@
       const skippedCount = importPlan.skippedWorks.length + importPlan.blockedOperations.length + fatalPickingNos.size;
       if (successWorks === 0) {
         $('importStatus').textContent = '取込失敗';
-      } else if (warnings.length || errorCount || skippedCount > 0) {
+      } else if (errorCount || skippedCount > 0) {
         $('importStatus').textContent = '一部取込完了';
+      } else if (warnings.length) {
+        $('importStatus').textContent = '取込完了（警告あり）';
       } else {
         $('importStatus').textContent = '取込完了';
       }
