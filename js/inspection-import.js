@@ -36,7 +36,32 @@
   }
 
   function mapHeaders(headers){ const map={}; Object.entries(window.csvUtils.HEADER_ALIASES).forEach(([k,aliases])=>{ const i=headers.findIndex(h=>aliases.includes((h||'').trim())); if(i>=0) map[k]=i;}); return map; }
-  function rowObj(row,map){ const o={}; Object.entries(map).forEach(([k,i])=>o[k]=(row[i]||'').trim()); return o; }
+  const FIELD_LABELS={work_id:'ピッキングNo.',main_barcode:'JAN',alt_code:'代替コード',slip_no:'伝票番号',target_qty:'数量',product_name:'商品名',recipient_name:'お届け先名',shipment_date:'出荷日',shipper_name:'荷主名',location:'ロケーション',excluded_flag:'対象外フラグ',product_id:'商品ID'};
+  const reasonMessages={NORMALIZED_CHARACTER:'使用できない可能性のある文字を置換して取り込みました。',INVALID_CHARACTER:'使用できない文字が含まれています。',MISSING_REQUIRED_FIELD:'必須項目が空欄です。',INVALID_QUANTITY:'数量が正の整数または0ではありません。',MISSING_BARCODE_FIELD:'JANまたは代替コードのどちらか一方は必須です。',COLUMN_OUT_OF_RANGE:'CSVマッピング設定に誤りがあります。',ROW_PARSE_ERROR:'CSV行のパースに失敗しました。',RECOMMENDED_FIELD_EMPTY:'推奨項目が空欄です。取込は継続しました。',PICKING_SKIPPED:'ピッキングNo.単位でスキップされました。',ENCODING_REPLACEMENT_CHAR:'読み込み後のCSVに置換文字が含まれています。',ZERO_QUANTITY_SKIPPED:'数量0のため取込対象外としてスキップしました。',EXCLUDED_FLAG_ON:'対象外フラグONの行は取込できません。',DUPLICATE_SCAN_KEY:'同一ピッキングNo.内で検品キーが重複しています。'};
+  function formatReplacements(replacements){
+    return replacements.map(({from,to})=>`「${from}」→「${to}」`).join('、');
+  }
+  function rowObj(row,map,rowNumber,warnings){
+    const o={};
+    Object.entries(map).forEach(([k,i])=>{
+      const rawValue=String(row[i]??'');
+      const normalizedValue=window.csvUtils.normalizeCsvValueByField(k,rawValue);
+      o[k]=normalizedValue;
+      const replacements=window.csvUtils.findUnsafeCharReplacements(rawValue,normalizedValue);
+      if(replacements.length){
+        warnings.push({severity:'warning',rowNumber,pickingNo:k==='work_id'?normalizedValue:'',columnName:FIELD_LABELS[k]||k,rawValue,normalizedValue,reasonCode:'NORMALIZED_CHARACTER',message:`使用できない可能性のある文字を置換して取り込みました。置換内容：${formatReplacements(replacements)}`});
+      }
+    });
+    return o;
+  }
+  function makeIssue(severity,reasonCode,rowNumber,pickingNo,columnName,rawValue,normalizedValue,message){ return {severity, rowNumber, pickingNo:pickingNo||'', columnName, rawValue:rawValue??'', normalizedValue:normalizedValue??'', reasonCode, message:message||reasonMessages[reasonCode]||''}; }
+  function formatIssue(issue){ const row=issue.rowNumber?`${issue.rowNumber}行目`:'取込前'; const col=issue.columnName?` / ${issue.columnName}`:''; const pick=issue.pickingNo?` / ピッキングNo.${issue.pickingNo}`:''; const val=issue.rawValue!==''&&issue.reasonCode!=='NORMALIZED_CHARACTER'?` 値：${issue.rawValue}`:''; if(issue.reasonCode==='NORMALIZED_CHARACTER') return `${row}${col}${pick}：${issue.message} ${issue.rawValue} → ${issue.normalizedValue}`; return `${row}${col}${pick}：${issue.message}${val}`; }
+  function validateMappingRange(map,rows,mapping){
+    const maxCols=rows.reduce((m,r)=>Math.max(m,r.length),0);
+    const issues=[];
+    Object.entries(map).forEach(([k,i])=>{ if(i>=maxCols){ issues.push(makeIssue('error','COLUMN_OUT_OF_RANGE',null,'',FIELD_LABELS[k]||k,mapping?.columns?.[Object.entries({pickingNo:'work_id',jan:'main_barcode',alternativeCode:'alt_code',productName:'product_name',quantity:'target_qty',destinationName:'recipient_name',slipNo:'slip_no',shipDate:'shipment_date',shipperName:'shipper_name',location:'location'}).find(([,v])=>v===k)?.[0]]||String(i+1),'',`CSVマッピング設定に誤りがあります。${FIELD_LABELS[k]||k}に指定された列がCSVの列数を超えています。CSV列数：${maxCols}列`)); } });
+    return issues;
+  }
 
   async function loadCsvMapping(clientId){
     if(!window.firestorePaths?.csvMappingCurrent) return null;
@@ -47,7 +72,7 @@
 
   function convertMappingKeysToLegacyMap(mapping){
     const columns=mapping?.columns||{};
-    const keyMap={pickingNo:'work_id',jan:'main_barcode',alternativeCode:'alt_code',productName:'product_name',quantity:'target_qty',destinationName:'recipient_name',slipNo:'slip_no',shipDate:'ship_date',shipperName:'shipper_name',location:'location'};
+    const keyMap={pickingNo:'work_id',jan:'main_barcode',alternativeCode:'alt_code',productName:'product_name',quantity:'target_qty',destinationName:'recipient_name',slipNo:'slip_no',shipDate:'shipment_date',shipperName:'shipper_name',location:'location'};
     const map={};
     Object.entries(keyMap).forEach(([newKey,legacyKey])=>{const index=columnLetterToIndex(columns[newKey]); if(index!==null&&index!==undefined) map[legacyKey]=index;});
     return map;
@@ -88,24 +113,30 @@
       const map=useMapping?convertMappingKeysToLegacyMap(mapping):mapHeaders(rows[0]);
       const dataRows=useMapping?(mapping.hasHeader?rows.slice(1):rows):rows.slice(1);
       const miss=requiredBase.filter(k=>map[k]===undefined); const hasBarcodeHeader = map.main_barcode !== undefined || map.alt_code !== undefined; if(inspectSlipNo&&map.slip_no===undefined) miss.push('slip_no'); if(!mapping || miss.length || !hasBarcodeHeader) return fail('CSVマッピング設定に不足があります。マッピング設定を確認してください。');
+      const mappingIssues=validateMappingRange(map,rows,mapping); if(mappingIssues.length){ errors.push(...mappingIssues); $('importStatus').textContent='取込失敗'; renderMessages('importErrors', errors.map(formatIssue)); return; }
       const valid=[];
       const fatalPickingNos = new Set();
-      dataRows.forEach((r,i)=>{ const n=(useMapping&&mapping.hasHeader===false)?i+1:i+2; const o=rowObj(r,map);
-        const ng=(m)=>errors.push({row:n,reason:m,summary:`${o.work_id||''}/${o.product_id||''}/${o.product_name||''}`});
-        if(!o.work_id) return ng('ピッキングNo.空欄');
-        if(!o.main_barcode && !o.alt_code) return ng('メインバーコード・代替コードが空');
-        const q=Number(o.target_qty); if(!o.target_qty) return ng('数量空欄'); if(!Number.isFinite(q)) return ng('数量不正'); if(q<0) return ng('数量マイナス'); if(!Number.isInteger(q)) return ng('数量小数'); if(q===0){ warnings.push(`行${n}: 数量0のため取込対象外としてスキップしました`); return; }
-        if((o.excluded_flag||'').toUpperCase()==='ON' || o.excluded_flag==='1') return ng('対象外フラグON');
-        if(inspectSlipNo && !o.slip_no) return ng('伝票番号が空');
+      dataRows.forEach((r,i)=>{ const n=(useMapping&&mapping.hasHeader===false)?i+1:i+2; const rowWarnings=[]; const o=rowObj(r,map,n,rowWarnings); rowWarnings.forEach(w=>{ w.pickingNo=o.work_id||w.pickingNo; warnings.push(w); });
+        const ng=(reasonCode,columnName,rawValue,message)=>{ errors.push(makeIssue('error',reasonCode,n,o.work_id,columnName,rawValue,rawValue,message)); if(o.work_id) fatalPickingNos.add(o.work_id); };
+        if(!o.work_id) return ng('MISSING_REQUIRED_FIELD','ピッキングNo.',o.work_id,'ピッキングNo.は必須です。');
+        if(!o.main_barcode && !o.alt_code) return ng('MISSING_BARCODE_FIELD','JAN・代替コード','',reasonMessages.MISSING_BARCODE_FIELD);
+        const q=Number(o.target_qty); if(!o.target_qty || !Number.isFinite(q) || q<0 || !Number.isInteger(q)) return ng('INVALID_QUANTITY','数量',o.target_qty,reasonMessages.INVALID_QUANTITY);
+        if(q===0){ warnings.push(makeIssue('warning','ZERO_QUANTITY_SKIPPED',n,o.work_id,'数量',o.target_qty,o.target_qty,'数量0のため取込対象外としてスキップしました。')); return; }
+        if(!o.product_name) warnings.push(makeIssue('warning','RECOMMENDED_FIELD_EMPTY',n,o.work_id,'商品名',o.product_name,o.product_name,'商品名が空欄です。取込は継続しました。'));
+        if((o.excluded_flag||'').toUpperCase()==='ON' || o.excluded_flag==='1') return ng('EXCLUDED_FLAG_ON','対象外フラグ',o.excluded_flag,'対象外フラグONの行は取込できません。');
+        if(inspectSlipNo && !o.slip_no) return ng('MISSING_REQUIRED_FIELD','伝票番号',o.slip_no,'伝票番号は必須です。');
         o.product_id=o.product_id||`AUTO-${o.work_id}-${n}`; o.product_name=o.product_name||''; o.recipient_name=o.recipient_name||''; o.target_qty=q; o.scan_code=o.main_barcode||o.alt_code; o.row_number=n; valid.push(o);
       });
       const scanKeyDupMap = new Map();
       valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; scanKeyDupMap.set(key,(scanKeyDupMap.get(key)||0)+1); });
-      valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; if((scanKeyDupMap.get(key)||0)>1){ fatalPickingNos.add(workId); } });
+      valid.forEach((o)=>{ const workId=String(o.work_id||'').trim(); const scanKey=String(o.main_barcode||o.alt_code||'').trim(); const key=`${workId}__${scanKey}`; if((scanKeyDupMap.get(key)||0)>1){ fatalPickingNos.add(workId); errors.push(makeIssue('error','DUPLICATE_SCAN_KEY',o.row_number,workId,'JAN・代替コード',scanKey,scanKey,'同一ピッキングNo.内で検品キーが重複しています。')); } });
       if(fatalPickingNos.size){
-        [...fatalPickingNos].forEach(pickingNo=>warnings.push(`${pickingNo}：CSV内に取込できない行があります。対象のピッキングNo.はスキップされました。`));
+        [...fatalPickingNos].forEach(pickingNo=>{
+          const total=errors.filter(e=>e.pickingNo===pickingNo).length;
+          errors.push(makeIssue('error','PICKING_SKIPPED',null,pickingNo,'ピッキングNo.','', '', `CSV内に取込できない行が${total||1}件あります。対象のピッキングNo.はスキップされました。`));
+        });
       }
-      if(!valid.length) return fail('正常行が1件もありません');
+      if(!valid.length){ renderMessages('importErrors', errors.map(formatIssue)); renderMessages('importWarnings', warnings.map(formatIssue)); return fail('正常行が1件もありません'); }
       $('importStatus').textContent='既存作業ID確認中...';
       const batchId=`batch_${Date.now()}`; const grouped={}; valid.forEach(v=>(grouped[v.work_id]??=[]).push(v));
       let batch=db().batch(), writes=0, successWorks=0, successDetails=0;
@@ -120,7 +151,7 @@
           const statusMsg = currentStatus==='completed' ? '検品完了済みのため上書きできません' : currentStatus==='current' ? '作業中のため上書きできません' : currentStatus==='suspended' ? '中断中のため上書きできません' : '削除済みのため上書きできません';
           const msg = `${rawPickingNo}：${statusMsg}`;
           importPlan.skippedWorks.push({ pickingNo: rawPickingNo, reasonCode: `status_${currentStatus}`, message: msg });
-          warnings.push(msg);
+          warnings.push(makeIssue('warning', `status_${currentStatus}`, null, rawPickingNo, 'ピッキングNo.', '', '', msg));
           continue;
         }
 
@@ -132,8 +163,8 @@
           if(requiresDelete){
             const blockedMessage = `${rawPickingNo}：既存明細と今回CSVのバーコード構成が異なるため、上書きできませんでした`; 
             importPlan.blockedOperations.push({ pickingNo: rawPickingNo, reasonCode: 'requires_delete', message: blockedMessage });
-            warnings.push(blockedMessage);
-            warnings.push('現在の安全設定では、取込済み明細の削除を伴う差し替えは行いません。');
+            warnings.push(makeIssue('warning', 'requires_delete', null, rawPickingNo, 'ピッキングNo.', '', '', blockedMessage));
+            warnings.push(makeIssue('warning', 'requires_delete', null, rawPickingNo, 'ピッキングNo.', '', '', '現在の安全設定では、取込済み明細の削除を伴う差し替えは行いません。'));
             continue;
           }
           importPlan.overwriteWorks.push(rawPickingNo);
@@ -178,7 +209,7 @@
         const targetQtyTotal=details.filter(x=>x.inspectionRequired!==false).reduce((n,x)=>n+Number(x.targetQty||0),0);
         const destinationName=items[0].recipient_name||'';
         const slipNo=items[0].slip_no||'';
-        const shipDate=items[0].ship_date||null;
+        const shipDate=items[0].shipment_date||null;
         const shipperName=items[0].shipper_name||'';
         const location=items[0].location||'';
         const nowTs=window.firebase.firestore.FieldValue.serverTimestamp();
@@ -236,20 +267,20 @@
         successWorks+=1; successDetails+=details.length;
       }
       $('importStatus').textContent='取込内容を保存中...'; await commitBatchIfNeeded(true);
-      const totalWorks=Object.keys(grouped).length; const batchStatus = successWorks===0 ? 'failed' : ((errors.length||warnings.length||successWorks<totalWorks)?'partial_success':'success');
-      await window.firestorePaths.importBatches(clientId).doc(batchId).set({batchId,batch_id:batchId,importedAt:window.firebase.firestore.FieldValue.serverTimestamp(),imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),importedBy:window.auth?.currentUser?.email||'unknown-user',imported_by:window.auth?.currentUser?.email||'unknown-user',sourceFileName:file.name,source_file_name:file.name,encoding,status:batchStatus,successWorkCount:successWorks,success_work_count:successWorks,successDetailCount:successDetails,success_detail_count:successDetails,sourceRowCount:dataRows.length,source_row_count:dataRows.length,errorCount:errors.length,error_count:errors.length,warningCount:warnings.length,warning_count:warnings.length,errors,warnings});
+      const totalWorks=Object.keys(grouped).length; const errorCount=errors.filter(e=>e.reasonCode!=='PICKING_SKIPPED').length; const batchStatus = successWorks===0 ? 'failed' : ((errorCount||warnings.length||successWorks<totalWorks)?'partial_success':'success');
+      await window.firestorePaths.importBatches(clientId).doc(batchId).set({batchId,batch_id:batchId,importedAt:window.firebase.firestore.FieldValue.serverTimestamp(),imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),importedBy:window.auth?.currentUser?.email||'unknown-user',imported_by:window.auth?.currentUser?.email||'unknown-user',sourceFileName:file.name,source_file_name:file.name,encoding,status:batchStatus,successWorkCount:successWorks,success_work_count:successWorks,successDetailCount:successDetails,success_detail_count:successDetails,sourceRowCount:dataRows.length,source_row_count:dataRows.length,errorCount,error_count:errorCount,warningCount:warnings.length,warning_count:warnings.length,errors,warnings});
       const opRef=window.firestorePaths.operationLogs(clientId).doc();
-      await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{sourceFileName:file.name,sourceRowCount:dataRows.length,successWorkCount:successWorks,successDetailCount:successDetails,errorCount:errors.length,warningCount:warnings.length},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
-      const skippedCount = importPlan.skippedWorks.length + importPlan.blockedOperations.length;
+      await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{sourceFileName:file.name,sourceRowCount:dataRows.length,successWorkCount:successWorks,successDetailCount:successDetails,errorCount,warningCount:warnings.length},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
+      const skippedCount = importPlan.skippedWorks.length + importPlan.blockedOperations.length + fatalPickingNos.size;
       if (successWorks === 0) {
         $('importStatus').textContent = '取込失敗';
-      } else if (warnings.length || errors.length || skippedCount > 0) {
+      } else if (warnings.length || errorCount || skippedCount > 0) {
         $('importStatus').textContent = '一部取込完了';
       } else {
         $('importStatus').textContent = '取込完了';
       }
-      $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} スキップ:${skippedCount} エラー:${errors.length} 警告:${warnings.length}`;
-      renderMessages('importErrors', errors.map(e=>`行${e.row}: ${e.reason} (${e.summary})`)); renderMessages('importWarnings', warnings);
+      $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} スキップ:${skippedCount} エラー:${errorCount} 警告:${warnings.length}`;
+      renderMessages('importErrors', errors.map(formatIssue)); renderMessages('importWarnings', warnings.map(formatIssue));
     } catch (e) {
       if (isPermissionDeniedError(e)) {
         const ctx = await resolveImportContext();
