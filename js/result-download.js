@@ -119,9 +119,10 @@
     const results = await runInBatches(works, DETAIL_ITEM_CONCURRENCY, async (workDoc) => {
       const work = workDoc.data() || {};
       const itemSnap = await getInspectionWorkItemsRef(workDoc.id).get();
+      const orderValue = (item, index) => Number(item?.sortOrder ?? item?.sort_order ?? item?.lineNo ?? item?.line_no ?? item?.display_order_base ?? item?.displayOrderBase ?? item?.source_rows?.[0] ?? item?.rowNumbers?.[0] ?? index);
+      const orderedItems = itemSnap.docs.map((itemDoc, index) => ({ id: itemDoc.id, item: itemDoc.data() || {}, index })).sort((a, b) => orderValue(a.item, a.index) - orderValue(b.item, b.index) || String(a.id).localeCompare(String(b.id)));
       const workRows = [];
-      itemSnap.forEach((itemDoc) => {
-        const item = itemDoc.data() || {};
+      orderedItems.forEach(({ item }) => {
         const target = Number(item.targetQty ?? 0);
         const actual = Number(item.actualQty ?? 0);
         workRows.push([work.pickingNo || '', item.jan || '', item.alternativeCode || '', item.productName || '', target, actual, actual - target, item.inspectionRequired === false ? '検品対象外' : '検品対象', resolveItemStatus(item, target, actual), work.destinationName || '', work.slipNo || '', work.shipDate || '', work.shipperName || '', work.location || item.location || '', work.importFileName || '', formatDateTime(work.completedAt)]);

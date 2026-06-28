@@ -311,11 +311,12 @@
       const excluded=(d)=>d?.inspectionRequired===false||d?.inspection_required===false||tqty(d)===0;
       const scanKey=(d)=>[...(Array.isArray(d.scanKeys)?d.scanKeys:[]),{type:'jan',value:d.main_barcode||d.scan_code||d.jan},{type:'alternative',value:d.alt_code||d.alternativeCode},{type:'slipNo',value:d.slipNo}].map(k=>({type:k.type||'unknown',value:norm(k.value)})).filter(k=>k.value);
       const code=norm(scannedCode);
-      let idx=-1, codeType='unknown';
-      for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='jan'&&k.value===code)){idx=i;codeType='jan';break;}}
-      if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='alternative'&&k.value===code)){idx=i;codeType='alternative';break;}}}
-      if(idx<0){for(let i=0;i<details.length;i++){const d=details[i]; if(excluded(d)) continue; if(scanKey(d).some(k=>k.type==='slipNo'&&k.value===code)){idx=i;codeType='slipNo';break;}}}
-      if(idx<0) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'not_found',errorMessage:'not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'not found'}; }
+      const order=(d,i)=>Number(d?.sortOrder ?? d?.sort_order ?? d?.lineNo ?? d?.line_no ?? d?.display_order_base ?? d?.displayOrderBase ?? d?.source_rows?.[0] ?? d?.rowNumbers?.[0] ?? i);
+      const matchedIndexes=details.map((d,i)=>({d,i})).filter(({d})=>!excluded(d)&&scanKey(d).some(k=>k.value===code)).sort((a,b)=>order(a.d,a.i)-order(b.d,b.i)||a.i-b.i);
+      const firstOpen=matchedIndexes.find(({d})=>aqty(d)<tqty(d));
+      const idx=firstOpen?.i ?? -1;
+      const codeType=firstOpen?scanKey(firstOpen.d).find(k=>k.value===code)?.type||'unknown':'unknown';
+      if(idx<0) { const knownGroup=matchedIndexes.length>0; tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:knownGroup?'over_qty':'not_found',errorMessage:knownGroup?'over qty':'not found',codeType,inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:knownGroup?'over qty':'not found'}; }
       const d=details[idx]; const before=aqty(d); const target=tqty(d); const after=before+Number(inputQty||0);
       const detailId = d.detail_id || d.itemId || null;
       if(after>target) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'over qty'}; }
