@@ -110,8 +110,9 @@
   }
 
   function scanLogPayload(payload) {
+    const qty = Number(payload?.scanQty ?? payload?.inputQty ?? payload?.qty ?? 0);
     // 必須のTTL項目をpayloadより後に設定し、すべてのscanLogs作成経路で欠落・上書きを防ぐ。
-    return { ...payload, ...scanLogTimestamps() };
+    return { ...payload, scanQty: qty, ...scanLogTimestamps() };
   }
 
   async function writeScanLog(payload) {
@@ -289,7 +290,11 @@
 
 
   window.applyScanTransaction = async function applyScanTransaction(input) {
-    const { workId, scannedCode, inputQty, workerId, workerName, userId, deviceId } = input;
+    const { workId, scannedCode, workerId, workerName, userId, deviceId } = input; const inputQty = Number(input?.scanQty ?? input?.inputQty ?? 1);
+    if (!Number.isInteger(inputQty) || inputQty < 1) {
+      await writeScanLog({ clientId:getClientId(), workId, scannedCode:scannedCode||'', codeType:'unknown', result:'invalid', errorMessage:'invalid scan qty', inputQty:Number(inputQty||0), scanQty:Number(inputQty||0), beforeQty:null, afterQty:null, targetQty:null, workerId, workerNameSnapshot:workerName||null, userId:userId||null, deviceId:deviceId||null });
+      return { ok:false, message:'invalid scan qty' };
+    }
     if (!String(scannedCode || '').trim()) {
       await writeScanLog({ clientId:getClientId(), workId, scannedCode:'', codeType:'unknown', result:'invalid', errorMessage:'empty_code', workerId, workerNameSnapshot:workerName||null, userId:userId||null, deviceId:deviceId||null });
       return { ok:false, message:'invalid' };
@@ -299,12 +304,12 @@
     const completedAtValue = now;
     return window.db.runTransaction(async (tx) => {
       const snap = await tx.get(workRef);
-      if (!snap.exists) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:workId,scannedCode,result:'not_found',errorMessage:'work not found',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return { ok:false, message:'work not found' }; }
+      if (!snap.exists) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:workId,scannedCode,result:'not_found',errorMessage:'work not found',codeType:'unknown',inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return { ok:false, message:'work not found' }; }
       const data=snap.data()||{}; const work=data.work||{}; const details=Array.isArray(data.details)?data.details:[];
-      if(work.status==='completed'){ tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'completed_work',errorMessage:'completed',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'work is not current'};}
-      if(work.status!=='current') { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'invalid',errorMessage:`work is not current: ${work.status || 'unknown'}`,codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'work is not current'}; }
-      if(work.current_worker_id && work.current_worker_id!==workerId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'lock owner mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'lock owner mismatch'}; }
-      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'device mismatch',codeType:'unknown',inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'device mismatch'}; }
+      if(work.status==='completed'){ tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'completed_work',errorMessage:'completed',codeType:'unknown',inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'work is not current'};}
+      if(work.status!=='current') { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'invalid',errorMessage:`work is not current: ${work.status || 'unknown'}`,codeType:'unknown',inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'work is not current'}; }
+      if(work.current_worker_id && work.current_worker_id!==workerId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'lock owner mismatch',codeType:'unknown',inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'lock owner mismatch'}; }
+      if(work.current_device_id && deviceId && work.current_device_id!==deviceId) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode,result:'locked',errorMessage:'device mismatch',codeType:'unknown',inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'device mismatch'}; }
       const norm=(v)=>String(v||'').trim();
       const tqty=(d)=>Number(d?.target_qty ?? d?.targetQty ?? 0);
       const aqty=(d)=>Number(d?.actual_qty ?? d?.actualQty ?? 0);
@@ -316,10 +321,10 @@
       const firstOpen=matchedIndexes.find(({d})=>aqty(d)<tqty(d));
       const idx=firstOpen?.i ?? -1;
       const codeType=firstOpen?scanKey(firstOpen.d).find(k=>k.value===code)?.type||'unknown':'unknown';
-      if(idx<0) { const knownGroup=matchedIndexes.length>0; tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:knownGroup?'over_qty':'not_found',errorMessage:knownGroup?'over qty':'not found',codeType,inputQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:knownGroup?'over qty':'not found'}; }
-      const d=details[idx]; const before=aqty(d); const target=tqty(d); const after=before+Number(inputQty||0);
+      if(idx<0) { const knownGroup=matchedIndexes.length>0; tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:knownGroup?'over_qty':'not_found',errorMessage:knownGroup?'over qty':'not found',codeType,inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:null,afterQty:null,targetQty:null,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:knownGroup?'over qty':'not found'}; }
+      const d=details[idx]; const before=aqty(d); const target=tqty(d); const scanQty=Number(inputQty||0); const after=before+scanQty;
       const detailId = d.detail_id || d.itemId || null;
-      if(after>target) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'over qty'}; }
+      if(after>target) { tx.set(scanLogsRef().doc(),scanLogPayload({clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,result:'over_qty',errorMessage:'over qty',codeType,inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,remainingQtyAfter:Math.max(0,target-after),workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null})); return {ok:false,message:'over qty'}; }
       d.actual_qty = after;
       d.actualQty = after;
       d.completed_flag = after>=target;
@@ -342,7 +347,7 @@
       }
       const logRef = scanLogsRef().doc();
       const logId = logRef.id;
-      tx.set(logRef,scanLogPayload({logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}));
+      tx.set(logRef,scanLogPayload({logId,clientId:getClientId(),workId,pickingNo:work.pickingNo||work.picking_no||workId,scannedCode:code,codeType,result:'success',errorMessage:'',inputQty:Number(inputQty||0),scanQty:Number(inputQty||0),beforeQty:before,afterQty:after,targetQty:target,remainingQtyAfter:Math.max(0,target-after),workerId,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null}));
       if(completed){ const opRef=operationLogsRef().doc(); tx.set(opRef,{logId:opRef.id,clientId:getClientId(),operationType:'complete',targetType:'inspectionWork',targetId:workId,workerId:workerId||null,workerNameSnapshot:workerName||null,userId:userId||null,deviceId:deviceId||null,detail:{trigger:'scan-complete',scannedCode:code,detailId:d.detail_id||d.itemId||null},operatedAt:now}); }
       return {ok:true,detailId:d.detail_id||d.itemId||null,state:{work,details}};
     });
@@ -507,10 +512,11 @@
     const ctx = window.appContext || {};
     const eventType = input.eventType || input.result || 'scan';
     const matchedType = input.matchedType || input.codeType || 'unknown';
-    const qty = Number(input.qty ?? input.inputQty ?? 0);
+    const qty = Number(input.scanQty ?? input.qty ?? input.inputQty ?? 0);
     const beforeActualQty = input.beforeActualQty ?? input.beforeQty ?? null;
     const afterActualQty = input.afterActualQty ?? input.afterQty ?? null;
     const plannedQty = input.plannedQty ?? input.targetQty ?? null;
+    const remainingQtyAfter = input.remainingQtyAfter ?? (afterActualQty != null && plannedQty != null ? Number(plannedQty) - Number(afterActualQty) : null);
     const userUid = input.userUid || input.userId || ctx.uid || null;
     return {
       ...input,
@@ -523,12 +529,14 @@
       itemId: input.itemId || null,
       qty,
       inputQty: input.inputQty ?? qty,
+      scanQty: input.scanQty ?? qty,
       beforeActualQty,
       beforeQty: input.beforeQty ?? beforeActualQty,
       afterActualQty,
       afterQty: input.afterQty ?? afterActualQty,
       plannedQty,
       targetQty: input.targetQty ?? plannedQty,
+      remainingQtyAfter,
       workerId: input.workerId || null,
       workerNameSnapshot: input.workerNameSnapshot || null,
       userUid,
@@ -561,7 +569,7 @@
 
   window.commitScanResult = async function commitScanResult(payload) {
     if (!window.db || !window.firebase?.firestore) throw new Error('Firestore is not initialized.');
-    const { workId, pickingNo, itemId, scannedCode, inputQty, beforeQty, afterQty, targetQty, workCompleted, worker, deviceId } = payload || {};
+    const { workId, pickingNo, itemId, scannedCode, beforeQty, afterQty, targetQty, workCompleted, worker, deviceId } = payload || {}; const inputQty = Number(payload?.scanQty ?? payload?.inputQty ?? 1);
     if (!workId) throw new Error('WORK_ID_MISSING');
     if (!itemId) throw new Error('ITEM_ID_MISSING');
     const now = window.firebase.firestore.FieldValue.serverTimestamp();
@@ -576,8 +584,15 @@
       if (idx < 0) throw new Error('ITEM_NOT_FOUND');
       const item = details[idx];
       const currentQty = Number(item?.actual_qty ?? item?.actualQty ?? 0);
-      if (Math.abs(currentQty - Number(beforeQty || 0)) > 0.0001) throw new Error('QTY_MISMATCH');
-      const nextQty = Number(afterQty || 0);
+      const parsedInputQty = Number(inputQty || 0);
+      const parsedBeforeQty = Number(beforeQty || 0);
+      const parsedAfterQty = Number(afterQty || 0);
+      const parsedTargetQty = Number(targetQty || 0);
+      if (!Number.isInteger(parsedInputQty) || parsedInputQty < 1) throw new Error('INVALID_SCAN_QTY');
+      if (Math.abs(currentQty - parsedBeforeQty) > 0.0001) throw new Error('QTY_MISMATCH');
+      if (parsedAfterQty !== parsedBeforeQty + parsedInputQty) throw new Error('SCAN_QTY_MISMATCH');
+      if (parsedAfterQty > parsedTargetQty) throw new Error('SCAN_QTY_EXCEEDS_TARGET');
+      const nextQty = parsedAfterQty;
       item.actual_qty = nextQty;
       item.actualQty = nextQty;
       item.completed_flag = nextQty >= Number(targetQty || 0);
@@ -602,7 +617,7 @@
         updated_at: now
       }, { merge: true });
       const logRef = scanLogsRef().doc();
-      tx.set(logRef, buildScanLog({ logId: logRef.id, eventType: 'scan_success', result: 'success', workId, pickingNo: pickingNo || work.pickingNo || work.picking_no || workId, scannedCode: String(scannedCode || ''), matchedType: 'unknown', qty: Number(inputQty || 0), beforeActualQty: Number(beforeQty || 0), afterActualQty: Number(afterQty || 0), plannedQty: Number(targetQty || 0), workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userUid: worker?.userId || null, deviceId: deviceId || null, scannedAt: now }));
+      tx.set(logRef, buildScanLog({ logId: logRef.id, eventType: 'scan_success', result: 'success', workId, pickingNo: pickingNo || work.pickingNo || work.picking_no || workId, scannedCode: String(scannedCode || ''), matchedType: 'unknown', scanQty: Number(inputQty || 0), qty: Number(inputQty || 0), beforeActualQty: Number(beforeQty || 0), afterActualQty: Number(afterQty || 0), plannedQty: Number(targetQty || 0), workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userUid: worker?.userId || null, deviceId: deviceId || null, scannedAt: now }));
       if (workCompleted) {
         const opRef = operationLogsRef().doc();
         tx.set(opRef, buildOperationLog({ logId: opRef.id, eventType: 'complete', operationType: 'complete', targetType: 'inspectionWork', targetId: workId, workerId: worker?.workerId || null, workerNameSnapshot: worker?.workerName || null, userUid: worker?.userId || null, deviceId: deviceId || null, after: { trigger: 'commit-scan-result', scannedCode: String(scannedCode || ''), detailId: itemId }, operatedAt: now }));
