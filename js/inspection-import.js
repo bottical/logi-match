@@ -37,7 +37,7 @@
 
   function mapHeaders(headers){ const map={}; Object.entries(window.csvUtils.HEADER_ALIASES).forEach(([k,aliases])=>{ const i=headers.findIndex(h=>aliases.includes((h||'').trim())); if(i>=0) map[k]=i;}); return map; }
   const FIELD_LABELS={work_id:'ピッキングNo.',main_barcode:'JAN',alt_code:'代替コード',slip_no:'伝票番号',target_qty:'数量',product_name:'商品名',recipient_name:'お届け先名',shipment_date:'出荷日',shipper_name:'荷主名',location:'ロケーション',excluded_flag:'対象外フラグ',product_id:'商品ID'};
-  const reasonMessages={NORMALIZED_CHARACTER:'使用できない可能性のある文字を置換して取り込みました。',INVALID_CHARACTER:'使用できない文字が含まれています。',MISSING_REQUIRED_FIELD:'必須項目が空欄です。',INVALID_QUANTITY:'数量が正の整数または0ではありません。',MISSING_BARCODE_FIELD:'JANまたは代替コードのどちらか一方は必須です。',COLUMN_OUT_OF_RANGE:'CSVマッピング設定に誤りがあります。',ROW_PARSE_ERROR:'CSV行のパースに失敗しました。',RECOMMENDED_FIELD_EMPTY:'推奨項目が空欄です。取込は継続しました。',PICKING_SKIPPED:'ピッキングNo.単位でスキップされました。',ENCODING_REPLACEMENT_CHAR:'読み込み後のCSVに置換文字が含まれています。',ZERO_QUANTITY_SKIPPED:'数量0のため取込対象外としてスキップしました。',EXCLUDED_FLAG_ON:'対象外フラグONの行は取込できません。'};
+  const reasonMessages={NORMALIZED_CHARACTER:'使用できない可能性のある文字を置換して取り込みました。',INVALID_CHARACTER:'使用できない文字が含まれています。',MISSING_REQUIRED_FIELD:'必須項目が空欄です。',INVALID_QUANTITY:'数量が正の整数または0ではありません。',MISSING_BARCODE_FIELD:'JANまたは代替コードのどちらか一方は必須です。',COLUMN_OUT_OF_RANGE:'CSVマッピング設定に誤りがあります。',ROW_PARSE_ERROR:'CSV行のパースに失敗しました。',RECOMMENDED_FIELD_EMPTY:'推奨項目が空欄です。取込は継続しました。',PICKING_SKIPPED:'ピッキングNo.単位でスキップされました。',ENCODING_REPLACEMENT_CHAR:'読み込み後のCSVに置換文字が含まれています。',ZERO_QUANTITY_SKIPPED:'数量0のため取込対象外としてスキップしました。',EXCLUDED_FLAG_ON:'対象外フラグONの行は取込できません。',DUPLICATE_SCAN_KEY_WARNING:'同一検品キーを持つ明細があります。検品時は取込順に自動引当します。'};
   function formatReplacements(replacements){
     return replacements.map(({from,to})=>`「${from}」→「${to}」`).join('、');
   }
@@ -154,11 +154,13 @@
 
         if (snap.exists && currentStatus==='unstarted') {
           const existingItemsSnap = await window.firestorePaths.inspectionItems(clientId, workId).get();
-          const existingKeys = new Set(existingItemsSnap.docs.map((d)=>`${(d.data()?.jan||'').trim()}|${(d.data()?.alternativeCode||'').trim()}|${(d.data()?.slipNo||'').trim()}`));
-          const incomingKeys = new Set(items.map((it)=>`${String(it.main_barcode||'').trim()}|${String(it.alt_code||'').trim()}|${String(it.slip_no||'').trim()}`));
-          const requiresDelete = existingKeys.size !== incomingKeys.size || [...existingKeys].some((k)=>!incomingKeys.has(k));
+          const orderValue=(row,index)=>Number(row?.sortOrder ?? row?.sort_order ?? row?.lineNo ?? row?.line_no ?? row?.display_order_base ?? row?.displayOrderBase ?? row?.source_rows?.[0] ?? row?.rowNumbers?.[0] ?? index);
+          const normalizeDetailSignature=(row,index)=>({jan:String(row?.jan ?? row?.main_barcode ?? '').trim(),alternativeCode:String(row?.alternativeCode ?? row?.alt_code ?? '').trim(),slipNo:String(row?.slipNo ?? row?.slip_no ?? '').trim(),productName:String(row?.productName ?? row?.product_name ?? '').trim(),targetQty:Number(row?.targetQty ?? row?.target_qty ?? 0),sortOrder:orderValue(row,index)});
+          const existingSignature=existingItemsSnap.docs.map((doc,index)=>normalizeDetailSignature(doc.data()||{},index)).sort((a,b)=>a.sortOrder-b.sortOrder);
+          const incomingSignature=items.map((it,index)=>normalizeDetailSignature({jan:it.main_barcode,alternativeCode:it.alt_code,slipNo:it.slip_no,productName:it.product_name,targetQty:it.target_qty,sortOrder:index+1},index));
+          const requiresDelete = JSON.stringify(existingSignature) !== JSON.stringify(incomingSignature);
           if(requiresDelete){
-            const blockedMessage = `${rawPickingNo}：既存明細と今回CSVのバーコード構成が異なるため、上書きできませんでした`; 
+            const blockedMessage = `${rawPickingNo}：既存明細と今回CSVの明細構成（順序・検品キー・商品名・数量）が異なるため、上書きできませんでした`;
             importPlan.blockedOperations.push({ pickingNo: rawPickingNo, reasonCode: 'requires_delete', message: blockedMessage });
             warnings.push(makeIssue('warning', 'requires_delete', null, rawPickingNo, 'ピッキングNo.', '', '', blockedMessage));
             warnings.push(makeIssue('warning', 'requires_delete', null, rawPickingNo, 'ピッキングNo.', '', '', '現在の安全設定では、取込済み明細の削除を伴う差し替えは行いません。'));
@@ -168,14 +170,19 @@
         }
         if (!snap.exists) importPlan.newWorks.push(rawPickingNo);
 
-        const dmap=new Map();
-        items.forEach(it=>{
-          const key=(it.main_barcode||it.alt_code||'').trim();
-          if(!dmap.has(key)) dmap.set(key,{itemId:`${safe(workId)}_${String(dmap.size+1).padStart(3,'0')}`,jan:it.main_barcode||'',alternativeCode:it.alt_code||'',scanKeys:[{type:'jan',value:it.main_barcode||''},{type:'alternative',value:it.alt_code||''}].filter(x=>x.value),productName:it.product_name||'',targetQty:0,actualQty:0,inspectionRequired:true,itemStatus:'unstarted',rowNumbers:[],warningMessages:[]});
-          const d=dmap.get(key);
-          d.targetQty+=it.target_qty; d.rowNumbers.push(it.row_number);
+        const duplicateScanKeyMap = new Map();
+        items.forEach((it) => {
+          [...new Set([String(it.main_barcode || '').trim(), String(it.alt_code || '').trim()].filter(Boolean))].forEach((key) => {
+            if (!duplicateScanKeyMap.has(key)) duplicateScanKeyMap.set(key, []);
+            duplicateScanKeyMap.get(key).push(it);
+          });
         });
-        const details=[...dmap.values()];
+        duplicateScanKeyMap.forEach((rows, key) => {
+          if (rows.length <= 1) return;
+          const targetLines = rows.map((it) => `- ${it.row_number}行目: ${it.product_name || ''} / 数量${it.target_qty}`).join('\n');
+          warnings.push(makeIssue('warning','DUPLICATE_SCAN_KEY_WARNING',null,rawPickingNo,'検品キー',key,key,`同一検品キーを持つ明細があります。検品時は取込順に自動引当します。\n※この処理は、同一検品キーの明細が同一物理商品であることを前提とします。\nピッキングNo: ${rawPickingNo}\n検品キー: ${key}\n対象明細:\n${targetLines}`));
+        });
+        const details=items.map((it,index)=>({itemId:`${safe(workId)}_${String(index+1).padStart(3,'0')}`,jan:it.main_barcode||'',alternativeCode:it.alt_code||'',scanKeys:[{type:'jan',value:it.main_barcode||''},{type:'alternative',value:it.alt_code||''}].filter((x,idx,arr)=>x.value&&arr.findIndex(y=>y.value===x.value)===idx),productName:it.product_name||'',targetQty:it.target_qty,actualQty:0,inspectionRequired:true,itemStatus:'unstarted',rowNumbers:[it.row_number],sourceRows:[it.row_number],lineNo:it.row_number,sortOrder:index+1,warningMessages:[]}));
         if (inspectSlipNo) {
           const slipMap = new Map();
           items.forEach((it) => {
@@ -233,7 +240,9 @@
           completed_flag: false,
           inspectionRequired: item.inspectionRequired !== false,
           itemStatus: item.inspectionRequired === false ? 'excluded' : 'unstarted',
-          display_order_base: index + 1,
+          display_order_base: item.sortOrder || index + 1,
+          lineNo: item.lineNo || item.rowNumbers?.[0] || index + 1,
+          sortOrder: item.sortOrder || index + 1,
           rowNumbers: item.rowNumbers || [],
           source_rows: item.rowNumbers || [],
           warningMessages: item.warningMessages || [],
