@@ -74,7 +74,7 @@
                             <label class="text-sm font-medium text-slate-700">総検品対象（出荷・入荷個数）</label>
                             <span class="text-sm font-bold text-indigo-600"><span id="val-totalItems">1000</span> 個</span>
                         </div>
-                        <input type="range" id="param-totalItems" min="100" max="5000" step="100" value="1000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
+                        <input type="range" id="param-totalItems" min="100" max="10000" step="100" value="1000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600">
                     </div>
 
                     <div>
@@ -125,7 +125,7 @@
                             <label class="text-sm font-medium text-slate-600">エラー時のロスタイム（1件あたり）</label>
                             <span class="text-sm font-bold text-amber-600"><span id="val-singleErrorDelay">15</span> 秒</span>
                         </div>
-                        <input type="range" id="param-singleErrorDelay" min="5" max="60" step="5" value="15" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500">
+                        <input type="range" id="param-singleErrorDelay" min="5" max="30" step="1" value="15" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-amber-500">
                     </div>
                 </div>
 
@@ -143,16 +143,16 @@
                             <label class="text-sm font-medium text-slate-600">1箱（バッチ）最大検品数</label>
                             <span class="text-sm font-bold text-emerald-600"><span id="val-bulkSize">10</span> 個</span>
                         </div>
-                        <input type="range" id="param-bulkSize" min="1" max="30" step="1" value="10" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                        <input type="range" id="param-bulkSize" min="5" max="100" step="5" value="10" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
                         <p class="text-[10px] text-slate-400 mt-1">※1回のスキャン（または1箱）に含める個数</p>
                     </div>
 
                     <div>
                         <div class="flex justify-between mb-1">
                             <label class="text-sm font-medium text-slate-600">1回あたりの準備時間（配置・移動）</label>
-                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkPrepTime">6.0</span> 秒</span>
+                            <span class="text-sm font-bold text-emerald-600"><span id="val-bulkPrepTime">6</span> 秒</span>
                         </div>
-                        <input type="range" id="param-bulkPrepTime" min="1.0" max="15.0" step="0.5" value="6.0" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                        <input type="range" id="param-bulkPrepTime" min="1" max="60" step="1" value="6.0" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
                     </div>
 
                     <div>
@@ -160,12 +160,12 @@
                             <label class="text-sm font-medium text-slate-600">一括スキャン自体の実行時間</label>
                             <span class="text-sm font-bold text-emerald-600"><span id="val-bulkScanTime">1.5</span> 秒</span>
                         </div>
-                        <input type="range" id="param-bulkScanTime" min="0.1" max="5.0" step="0.1" value="1.5" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+                        <input type="range" id="param-bulkScanTime" min="0.5" max="10.0" step="0.5" value="1.5" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
                     </div>
 
                     <div>
                         <div class="flex justify-between mb-1">
-                            <label class="text-sm font-medium text-slate-600">個体ごとの読み取りエラー率</label>
+                            <label class="text-sm font-medium text-slate-600">スキャンごとの読み取りエラー率</label>
                             <span class="text-sm font-bold text-emerald-600"><span id="val-bulkErrorRate">1</span> %</span>
                         </div>
                         <input type="range" id="param-bulkErrorRate" min="0" max="15" step="1" value="1" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500">
