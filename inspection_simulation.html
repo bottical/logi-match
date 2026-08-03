@@ -540,7 +540,65 @@
         function formatCurrency(val) {
             return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(Math.round(val));
         }
+const PARAM_STORAGE_KEY = 'inspectionSimulatorParams:v1';
 
+// 現在の設定値を保存
+function saveParams() {
+    const savedValues = {};
+
+    Object.entries(params).forEach(([key, element]) => {
+        savedValues[key] = element.value;
+    });
+
+    try {
+        localStorage.setItem(
+            PARAM_STORAGE_KEY,
+            JSON.stringify(savedValues)
+        );
+    } catch (error) {
+        console.warn('シミュレーション条件を保存できませんでした。', error);
+    }
+}
+
+// 前回の設定値を復元
+function restoreParams() {
+    try {
+        const raw = localStorage.getItem(PARAM_STORAGE_KEY);
+
+        if (!raw) {
+            return;
+        }
+
+        const savedValues = JSON.parse(raw);
+
+        Object.entries(params).forEach(([key, element]) => {
+            if (savedValues[key] === undefined) {
+                return;
+            }
+
+            const savedValue = Number(savedValues[key]);
+            const min = Number(element.min);
+            const max = Number(element.max);
+
+            if (!Number.isFinite(savedValue)) {
+                return;
+            }
+
+            // HTML側でスライダー範囲を変更した場合にも範囲外にならないよう補正
+            const restoredValue = Math.min(
+                max,
+                Math.max(min, savedValue)
+            );
+
+            element.value = String(restoredValue);
+        });
+    } catch (error) {
+        console.warn('保存されたシミュレーション条件を復元できませんでした。', error);
+
+        // 壊れた保存データは削除
+        localStorage.removeItem(PARAM_STORAGE_KEY);
+    }
+}
         // Calculation Logic
         function calculateProductivity() {
             // Read inputs
@@ -903,9 +961,13 @@
         }
 
         // Attach Event Listeners
-        Object.values(params).forEach(param => {
-            param.addEventListener('input', syncParams);
-        });
+Object.values(params).forEach(param => {
+    // スライダー操作中は表示・計算を即時更新
+    param.addEventListener('input', syncParams);
+
+    // 操作確定時に保存
+    param.addEventListener('change', saveParams);
+});
 
         btnStart.addEventListener('click', startSimulation);
         btnReset.addEventListener('click', () => {
@@ -917,9 +979,10 @@
             initSimulation();
         });
 
-        // Initialize App
-        syncParams();
-        initSimulation();
+// Initialize App
+restoreParams();
+syncParams();
+initSimulation();
 
     </script>
 </body>
