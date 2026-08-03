@@ -577,8 +577,8 @@
             // Preparation and scan time per batch
             const bulkBatchBaseTime = bulkPrep + bulkScan;
             const bulkBaseTime = totalBatches * bulkBatchBaseTime;
-            // Error expectation (error is per-item, requiring manual lookup time)
-            const bulkExpectedErrors = totalItems * bulkErrorRate;
+            // Error expectation: error rate is applied per bulk scan
+            const bulkExpectedErrors = totalBatches * bulkErrorRate;
             const bulkErrorTime = bulkExpectedErrors * bulkErrorDelay;
             // Total bulk time in seconds (divided by staff count)
             const bulkTotalSec = (bulkBaseTime + bulkErrorTime) / staffCount;
@@ -858,14 +858,8 @@
                             // 今回のスキャン個数
                             const currentBatchSize = Math.min(bulkSize, totalItems - bulkSimulatedProgress);
                             
-                            // このバッチ内でエラーが起きるか判定 (個数に応じた確率)
-                            let batchHasError = false;
-                            for (let i = 0; i < currentBatchSize; i++) {
-                                if (Math.random() < bulkErrRate) {
-                                    batchHasError = true;
-                                    break;
-                                }
-                            }
+                            // 一括スキャン1回ごとにエラー判定
+                            const batchHasError = Math.random() < bulkErrRate;
 
                             if (batchHasError) {
                                 bulkDelayActive = bulkErrDelay;
