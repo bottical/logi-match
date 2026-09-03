@@ -96,15 +96,20 @@
   async function runImport(){
     if (!db()) return alert('システム接続を確認できません。時間をおいて再読み込みしてください。'); if(!window.appContext?.tenantId) return alert('テナント情報の取得が完了していません。再読み込みしてください。');
     const file=$('csvFile').files[0]; if(!file) return;
+    const overwriteMode=Boolean($('correctionImport')?.checked);
+    if(overwriteMode && !window.confirm('訂正取込を実行します。\n\n同一ピッキングNo.の未着手データについて、\n現在の明細を削除し、今回CSVの内容へ差し替えます。\n\n削除済みデータが含まれる場合は、未着手状態として復活します。\n\n完了済みデータは更新されません。\n\n実行しますか？')) return;
     $('importStatus').textContent='取込中...'; $('importResult').textContent=''; renderMessages('importErrors',[]); renderMessages('importWarnings',[]);
     const warnings=[]; const errors=[];
     const importPlan = { newWorks: [], overwriteWorks: [], skippedWorks: [], warnings, errors, blockedOperations: [] };
+    let activeCorrection=null;
+    let importClientId=null;
     try {
       const {text,encoding,warnings:dw}=window.csvUtils.decodeCsvArrayBuffer(await file.arrayBuffer()); warnings.push(...dw);
       const rows=window.csvUtils.parseCsv(text); if(rows.length<1) return fail('CSVとして読めない、またはデータがありません');
       // 現行 appContext では tenantId 名で保持しているが、設計仕様上は clientId として扱う。
       const context = await resolveImportContext();
       const clientId=context.clientId;
+      importClientId=clientId;
       if(!context.uid || !clientId || context.membershipActive === false) return fail('ログインユーザーの所属情報を確認できません。管理者に確認してください。');
       if(context.role !== 'admin') return fail('CSV取込権限がありません。管理者アカウントでログインしてください。');
       const mapping=await loadCsvMapping(clientId);
@@ -136,30 +141,38 @@
       if(!valid.length){ renderMessages('importErrors', errors.map(formatIssue)); renderMessages('importWarnings', warnings.map(formatIssue)); return fail('正常行が1件もありません'); }
       $('importStatus').textContent='既存作業ID確認中...';
       const batchId=`batch_${Date.now()}`; const grouped={}; valid.forEach(v=>(grouped[v.work_id]??=[]).push(v));
-      let batch=db().batch(), writes=0, successWorks=0, successDetails=0;
+      let batch=db().batch(), writes=0, successWorks=0, successDetails=0, overwrittenCount=0, restoredDeletedCount=0;
       const commitBatchIfNeeded = async (force=false) => { if (writes>=BATCH_LIMIT || (force && writes>0)) { await batch.commit(); batch=db().batch(); writes=0; } };
       for (const [rawPickingNo,items] of Object.entries(grouped)) {
         if(fatalPickingNos.has(rawPickingNo)) continue;
         const workId=sanitizeWorkId(rawPickingNo);
         const ref=window.firestorePaths.inspectionWork(clientId, workId);
         const snap=await ref.get();
-        const currentStatus=snap.exists?((snap.data()||{}).status||'unstarted'):null;
-        if (snap.exists && ['current','suspended','completed','deleted'].includes(currentStatus)) {
-          const statusMsg = currentStatus==='completed' ? '検品完了済みのため上書きできません' : currentStatus==='current' ? '作業中のため上書きできません' : currentStatus==='suspended' ? '中断中のため上書きできません' : '削除済みのため上書きできません';
+        const existingWork=snap.exists?(snap.data()||{}):null;
+        const currentStatus=snap.exists?(existingWork.status||existingWork.work?.status||'unstarted'):null;
+        const isCompleted=snap.exists&&(currentStatus==='completed'||existingWork.completed_flag===true||existingWork.work?.completed_flag===true);
+        const isStarted=snap.exists&&['current','suspended'].includes(currentStatus);
+        const isDeleted=snap.exists&&!isCompleted&&!isStarted&&(currentStatus==='deleted'||existingWork.deleted_flag===true||existingWork.work?.deleted_flag===true);
+        let requiresDetailReplacement=false;
+        if (snap.exists && (isCompleted||isStarted||(!overwriteMode&&isDeleted))) {
+          const blockedStatus=isCompleted?'completed':isStarted?currentStatus:'deleted';
+          const statusMsg = overwriteMode
+            ? (blockedStatus==='completed' ? '検品完了済みのため更新できませんでした' : blockedStatus==='current' ? '作業開始済みのため更新できませんでした。検品実績をリセットして未着手に戻した後、再度訂正取込してください' : blockedStatus==='suspended' ? '中断中のため更新できませんでした。検品実績をリセットして未着手に戻した後、再度訂正取込してください' : '削除済みのため上書きできません')
+            : (blockedStatus==='completed' ? '検品完了済みのため上書きできません' : blockedStatus==='current' ? '作業中のため上書きできません' : blockedStatus==='suspended' ? '中断中のため上書きできません' : '削除済みのため上書きできません');
           const msg = `${rawPickingNo}：${statusMsg}`;
-          importPlan.skippedWorks.push({ pickingNo: rawPickingNo, reasonCode: `status_${currentStatus}`, message: msg });
-          warnings.push(makeIssue('warning', `status_${currentStatus}`, null, rawPickingNo, 'ピッキングNo.', '', '', msg));
+          importPlan.skippedWorks.push({ pickingNo: rawPickingNo, reasonCode: `status_${blockedStatus}`, message: msg });
+          warnings.push(makeIssue('warning', `status_${blockedStatus}`, null, rawPickingNo, 'ピッキングNo.', '', '', msg));
           continue;
         }
 
-        if (snap.exists && currentStatus==='unstarted') {
+        if (snap.exists && currentStatus==='unstarted' && !isDeleted) {
           const existingItemsSnap = await window.firestorePaths.inspectionItems(clientId, workId).get();
           const orderValue=(row,index)=>Number(row?.sortOrder ?? row?.sort_order ?? row?.lineNo ?? row?.line_no ?? row?.display_order_base ?? row?.displayOrderBase ?? row?.source_rows?.[0] ?? row?.rowNumbers?.[0] ?? index);
           const normalizeDetailSignature=(row,index)=>({jan:String(row?.jan ?? row?.main_barcode ?? '').trim(),alternativeCode:String(row?.alternativeCode ?? row?.alt_code ?? '').trim(),slipNo:String(row?.slipNo ?? row?.slip_no ?? '').trim(),productName:String(row?.productName ?? row?.product_name ?? '').trim(),targetQty:Number(row?.targetQty ?? row?.target_qty ?? 0),sortOrder:orderValue(row,index)});
           const existingSignature=existingItemsSnap.docs.map((doc,index)=>normalizeDetailSignature(doc.data()||{},index)).sort((a,b)=>a.sortOrder-b.sortOrder);
           const incomingSignature=items.map((it,index)=>normalizeDetailSignature({jan:it.main_barcode,alternativeCode:it.alt_code,slipNo:it.slip_no,productName:it.product_name,targetQty:it.target_qty,sortOrder:index+1},index));
-          const requiresDelete = JSON.stringify(existingSignature) !== JSON.stringify(incomingSignature);
-          if(requiresDelete){
+          requiresDetailReplacement = JSON.stringify(existingSignature) !== JSON.stringify(incomingSignature);
+          if(requiresDetailReplacement && !overwriteMode){
             const blockedMessage = `${rawPickingNo}：既存明細と今回CSVの明細構成（順序・検品キー・商品名・数量）が異なるため、上書きできませんでした`;
             importPlan.blockedOperations.push({ pickingNo: rawPickingNo, reasonCode: 'requires_delete', message: blockedMessage });
             warnings.push(makeIssue('warning', 'requires_delete', null, rawPickingNo, 'ピッキングNo.', '', '', blockedMessage));
@@ -167,6 +180,13 @@
             continue;
           }
           importPlan.overwriteWorks.push(rawPickingNo);
+        }
+        if(snap.exists && overwriteMode && currentStatus==='unstarted' && !isDeleted) overwrittenCount+=1;
+        if(snap.exists && overwriteMode && (isDeleted||requiresDetailReplacement)){
+          await commitBatchIfNeeded(true);
+          activeCorrection={pickingNo:rawPickingNo,workId};
+          await deleteItemsByChunk(window.firestorePaths.inspectionItems(clientId, workId));
+          if(isDeleted) restoredDeletedCount+=1;
         }
         if (!snap.exists) importPlan.newWorks.push(rawPickingNo);
 
@@ -260,9 +280,9 @@
           targetQtyTotal: legacyDetails.filter(x => x.inspectionRequired !== false).reduce((n, x) => n + Number(x.target_qty || 0), 0),
           actualQtyTotal: 0,
           excludedItemCount: legacyDetails.filter(x => x.inspectionRequired === false).length,
-          reset_count: 0, deleted_flag: false, created_at: nowIsoText, updated_at: nowIsoText
+          reset_count: 0, deleted_flag: false, deleted_at: null, deleted_by: null, created_at: nowIsoText, updated_at: nowIsoText
         };
-        batch.set(ref,{workId,pickingNo:rawPickingNo,status:'unstarted',destinationName,slipNo,shipDate,shipperName,location,totalSkuCount:legacyWork.totalSkuCount,targetQtyTotal:legacyWork.targetQtyTotal,actualQtyTotal:0,excludedItemCount:legacyWork.excludedItemCount,importBatchId:batchId,importFileName:file.name,currentWorkerId:null,currentWorkerName:null,currentDeviceId:null,lockAcquiredAt:null,lastActivityAt:null,startedAt:null,completedAt:null,suspendedAt:null,createdAt:nowTs,updatedAt:nowTs,deleted_flag:false,work_id:workId,import_date:nowIsoText,import_date_key:importDateKey,work:legacyWork,details:legacyDetails,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:nowTs},{merge:true});
+        batch.set(ref,{workId,pickingNo:rawPickingNo,status:'unstarted',destinationName,slipNo,shipDate,shipperName,location,totalSkuCount:legacyWork.totalSkuCount,targetQtyTotal:legacyWork.targetQtyTotal,actualQtyTotal:0,excludedItemCount:legacyWork.excludedItemCount,importBatchId:batchId,importFileName:file.name,currentWorkerId:null,currentWorkerName:null,currentDeviceId:null,lockAcquiredAt:null,lastActivityAt:null,startedAt:null,completedAt:null,suspendedAt:null,completed_flag:false,started_at:null,completed_at:null,suspended_at:null,createdAt:nowTs,updatedAt:nowTs,deleted_flag:false,deletedAt:null,deleted_at:null,deletedBy:null,deleted_by:null,work_id:workId,import_date:nowIsoText,import_date_key:importDateKey,work:legacyWork,details:legacyDetails,recentScan:null,importMeta:{batch_id:batchId,source_file_name:file.name,encoding},updated_at:nowTs},{merge:true});
         writes+=1;
         for (const item of details){
           batch.set(window.firestorePaths.inspectionItems(clientId, workId).doc(item.itemId),{...item,workId,pickingNo:rawPickingNo,createdAt:nowTs,updatedAt:nowTs});
@@ -270,14 +290,18 @@
           await commitBatchIfNeeded();
         }
         await commitBatchIfNeeded();
+        if(activeCorrection?.workId===workId){
+          await commitBatchIfNeeded(true);
+          activeCorrection=null;
+        }
         successWorks+=1; successDetails+=details.length;
       }
       $('importStatus').textContent='取込内容を保存中...'; await commitBatchIfNeeded(true);
       const totalWorks=Object.keys(grouped).length; const errorCount=errors.filter(e=>e.reasonCode!=='PICKING_SKIPPED').length; const batchStatus = successWorks===0 ? 'failed' : ((errorCount||warnings.length||successWorks<totalWorks)?'partial_success':'success');
-      await window.firestorePaths.importBatches(clientId).doc(batchId).set({batchId,batch_id:batchId,importedAt:window.firebase.firestore.FieldValue.serverTimestamp(),imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),importedBy:window.auth?.currentUser?.email||'unknown-user',imported_by:window.auth?.currentUser?.email||'unknown-user',sourceFileName:file.name,source_file_name:file.name,encoding,status:batchStatus,successWorkCount:successWorks,success_work_count:successWorks,successDetailCount:successDetails,success_detail_count:successDetails,sourceRowCount:dataRows.length,source_row_count:dataRows.length,errorCount,error_count:errorCount,warningCount:warnings.length,warning_count:warnings.length,errors,warnings});
-      const opRef=window.firestorePaths.operationLogs(clientId).doc();
-      await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{sourceFileName:file.name,sourceRowCount:dataRows.length,successWorkCount:successWorks,successDetailCount:successDetails,errorCount,warningCount:warnings.length},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
       const skippedCount = importPlan.skippedWorks.length + importPlan.blockedOperations.length + fatalPickingNos.size;
+      await window.firestorePaths.importBatches(clientId).doc(batchId).set({batchId,batch_id:batchId,importedAt:window.firebase.firestore.FieldValue.serverTimestamp(),imported_at:window.firebase.firestore.FieldValue.serverTimestamp(),importedBy:window.auth?.currentUser?.email||'unknown-user',imported_by:window.auth?.currentUser?.email||'unknown-user',sourceFileName:file.name,source_file_name:file.name,encoding,status:batchStatus,successWorkCount:successWorks,success_work_count:successWorks,successDetailCount:successDetails,success_detail_count:successDetails,sourceRowCount:dataRows.length,source_row_count:dataRows.length,errorCount,error_count:errorCount,warningCount:warnings.length,warning_count:warnings.length,newWorkCount:importPlan.newWorks.length,overwrittenWorkCount:importPlan.overwriteWorks.length+restoredDeletedCount,skippedWorkCount:skippedCount,overwriteMode,overwrittenCount,restoredDeletedCount,errors,warnings});
+      const opRef=window.firestorePaths.operationLogs(clientId).doc();
+      await opRef.set({logId:opRef.id,clientId,operationType:'import',targetType:'importBatch',targetId:batchId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{sourceFileName:file.name,sourceRowCount:dataRows.length,successWorkCount:successWorks,successDetailCount:successDetails,errorCount,warningCount:warnings.length,overwriteMode,overwrittenCount,restoredDeletedCount},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
       if (successWorks === 0) {
         $('importStatus').textContent = '取込失敗';
       } else if (errorCount || skippedCount > 0) {
@@ -287,9 +311,20 @@
       } else {
         $('importStatus').textContent = '取込完了';
       }
-      $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} スキップ:${skippedCount} エラー:${errorCount} 警告:${warnings.length}`;
+      const correctionResult=overwriteMode?` 新規登録:${importPlan.newWorks.length} 既存更新:${overwrittenCount} 削除済みから復活:${restoredDeletedCount} 作業開始済みのためスキップ:${importPlan.skippedWorks.filter(x=>['status_current','status_suspended'].includes(x.reasonCode)).length} 完了済みのためスキップ:${importPlan.skippedWorks.filter(x=>x.reasonCode==='status_completed').length}`:'';
+      $('importResult').textContent=`バッチ:${batchId} 作業:${successWorks} 明細:${successDetails} スキップ:${skippedCount} エラー:${errorCount} 警告:${warnings.length}${correctionResult}`;
       renderMessages('importErrors', errors.map(formatIssue)); renderMessages('importWarnings', warnings.map(formatIssue));
     } catch (e) {
+      if(activeCorrection){
+        const interruptedMessage=`ピッキングNo. ${activeCorrection.pickingNo} の訂正取込が途中終了した可能性があります。検品を開始せず、同じCSVで訂正取込を再実行してください。`;
+        console.error('[master-import] correction may be incomplete',{...activeCorrection,error:e});
+        try{
+          const opRef=window.firestorePaths.operationLogs(importClientId).doc();
+          await opRef.set({logId:opRef.id,clientId:importClientId,operationType:'import_correction_interrupted',targetType:'inspectionWork',targetId:activeCorrection.workId,workerId:null,workerNameSnapshot:null,userId:window.appContext.uid,deviceId:localStorage.getItem('deviceId')||null,detail:{pickingNo:activeCorrection.pickingNo,message:interruptedMessage,errorCode:e?.code||null,errorMessage:String(e?.message||e)},operatedAt:window.firebase.firestore.FieldValue.serverTimestamp()});
+        }catch(logError){console.error('[master-import] failed to record interrupted correction',logError);}
+        fail(interruptedMessage);
+        return;
+      }
       if (isPermissionDeniedError(e)) {
         const ctx = await resolveImportContext();
         const writeTargets = ['inspectionWork','inspectionItems','importBatches','operationLogs'];

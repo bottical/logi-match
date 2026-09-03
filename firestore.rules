@@ -81,7 +81,13 @@ service cloud.firestore {
           allow read: if belongsToClient(clientId);
           allow create: if isClientAdmin(clientId);
           allow update: if isClientAdmin(clientId) || isClientWorker(clientId);
-          allow delete: if false;
+          // 訂正取込時に限り、管理者は未着手・論理削除済み作業の明細を差し替えられる。
+          allow delete: if isClientAdmin(clientId)
+            && get(/databases/$(database)/documents/clients/$(clientId)/inspectionWorks/$(workId)).data.get('status', get(/databases/$(database)/documents/clients/$(clientId)/inspectionWorks/$(workId)).data.get('work', {}).get('status', '')) in ['unstarted', 'deleted']
+            && get(/databases/$(database)/documents/clients/$(clientId)/inspectionWorks/$(workId)).data.get('status', '') != 'completed'
+            && get(/databases/$(database)/documents/clients/$(clientId)/inspectionWorks/$(workId)).data.get('work', {}).get('status', '') != 'completed'
+            && get(/databases/$(database)/documents/clients/$(clientId)/inspectionWorks/$(workId)).data.get('completed_flag', false) != true
+            && get(/databases/$(database)/documents/clients/$(clientId)/inspectionWorks/$(workId)).data.get('work', {}).get('completed_flag', false) != true;
         }
       }
       match /scanLogs/{logId} {

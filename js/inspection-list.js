@@ -22,7 +22,27 @@ function getWorkerName(r){return r.completedWorkerName||r.currentWorkerName||r.w
 function renderEmpty(msg){$('workTableBody').innerHTML='';$('listStatus').textContent=msg||'データはまだありません。';}
 function renderError(userMessage,detail){$('workTableBody').innerHTML='';$('listStatus').textContent=userMessage;console.error('[inspection-list] detail',detail);}
 function showInitError(error){const message=error?.message||String(error);let userMessage='初期設定に失敗しました。';if(message.includes('clientId'))userMessage='ログインユーザーに clientId が設定されていません。管理者に確認してください。';else if(message.includes('USER_NOT_REGISTERED')||message.includes('ユーザー設定'))userMessage='ログインユーザー設定が未作成です。管理者に確認してください。';else if(message.includes('permission-denied')||message.includes('PERMISSION_DENIED'))userMessage='利用権限またはテナント設定に問題があります。管理者に確認してください。';renderError(userMessage,message);}
-function renderRows(rows){const completedPage=isCompletedPage();$('workTableBody').innerHTML='';rows.forEach(r=>{const totalSku=getTotalSkuCount(r),skuDone=getSkuDoneCount(r),qa=getActualQtyTotal(r),qt=getTargetQtyTotal(r);const tr=document.createElement('tr');[getPickingNo(r),getDestinationName(r),statusMap[statusOf(r)]||statusOf(r),`${skuDone}/${totalSku}`,`${qa}/${qt}`,fmt(getImportedAt(r)),fmt(getCompletedAt(r)),getWorkerName(r)].forEach(v=>{const td=document.createElement('td');td.textContent=String(v);tr.appendChild(td);});const td=document.createElement('td');const workId=getWorkId(r);const openLink=document.createElement('a');openLink.className='btn-link';openLink.href='./#inspection?work_id='+encodeURIComponent(workId);openLink.textContent=completedPage?'詳細を見る':'検品画面で開く';openLink.addEventListener('click',(e)=>{e.preventDefault();navigateShell('inspection','work_id='+encodeURIComponent(workId));});td.appendChild(openLink);tr.appendChild(td);$('workTableBody').appendChild(tr);});}
+function renderRows(rows){const completedPage=isCompletedPage();$('workTableBody').innerHTML='';rows.forEach(r=>{const totalSku=getTotalSkuCount(r),skuDone=getSkuDoneCount(r),qa=getActualQtyTotal(r),qt=getTargetQtyTotal(r);const tr=document.createElement('tr');[getPickingNo(r),getDestinationName(r),statusMap[statusOf(r)]||statusOf(r),`${skuDone}/${totalSku}`,`${qa}/${qt}`,fmt(getImportedAt(r)),fmt(getCompletedAt(r)),getWorkerName(r)].forEach(v=>{const td=document.createElement('td');td.textContent=String(v);tr.appendChild(td);});const td=document.createElement('td');const workId=getWorkId(r);const pickingNo=getPickingNo(r);const openLink=document.createElement('a');openLink.className='btn-link';openLink.href='./#inspection?work_id='+encodeURIComponent(workId);openLink.textContent=completedPage?'詳細を見る':'検品画面で開く';openLink.addEventListener('click',(e)=>{e.preventDefault();navigateShell('inspection','work_id='+encodeURIComponent(workId));});td.appendChild(openLink);if(!completedPage&&statusOf(r)==='unstarted'&&!r.deleted_flag&&!r.work?.deleted_flag){const deleteButton=document.createElement('button');deleteButton.type='button';deleteButton.className='btn-link';deleteButton.textContent='削除';deleteButton.addEventListener('click',()=>deleteUnstartedWork(workId,pickingNo,deleteButton));td.appendChild(document.createTextNode(' '));td.appendChild(deleteButton);}tr.appendChild(td);$('workTableBody').appendChild(tr);});}
+async function deleteUnstartedWork(workId,pickingNo,button){
+  if(!window.confirm(`ピッキングNo. ${pickingNo} を削除します。\n\n削除後、このデータは通常の検品対象から除外されます。\n訂正取込を行うことで、同一ピッキングNo.を再登録することができます。\n\n削除しますか？`))return;
+  button.disabled=true;
+  try{
+    const workRef=window.firestorePaths.inspectionWork(currentCtx.clientId,workId);
+    const opRef=window.firestorePaths.operationLogs(currentCtx.clientId).doc();
+    await currentCtx.db.runTransaction(async tx=>{
+      const snap=await tx.get(workRef);
+      if(!snap.exists)throw new Error('対象データが見つかりません。');
+      const data=snap.data()||{};
+      const status=data.status||data.work?.status||'';
+      if(status!=='unstarted'||data.completed_flag===true||data.work?.completed_flag===true||data.deleted_flag===true||data.work?.deleted_flag===true)throw new Error('未着手データではないため削除できません。再読込してください。');
+      const now=window.firebase.firestore.FieldValue.serverTimestamp();
+      const userId=currentCtx.uid||currentCtx.userId||null;
+      tx.update(workRef,{status:'deleted',deleted_flag:true,deletedAt:now,deleted_at:now,deletedBy:userId,deleted_by:userId,'work.status':'deleted','work.deleted_flag':true,'work.deleted_at':now,'work.deleted_by':userId,updatedAt:now,updated_at:now});
+      tx.set(opRef,{logId:opRef.id,clientId:currentCtx.clientId,operationType:'delete_unstarted',targetType:'inspectionWork',targetId:workId,workerId:null,workerNameSnapshot:null,userId,deviceId:localStorage.getItem('deviceId')||null,detail:{pickingNo},operatedAt:now});
+    });
+    await load(currentCtx);
+  }catch(error){console.error('[inspection-list] delete failed',error);alert(error?.message||'削除に失敗しました。通信状態を確認してください。');button.disabled=false;}
+}
 function ensureNextButton(){let btn=$('nextPageButton');if(btn)return btn;btn=document.createElement('button');btn.id='nextPageButton';btn.type='button';btn.textContent='次ページ';btn.disabled=true;$('reloadButton')?.insertAdjacentElement('afterend',btn);return btn;}
 // FirestoreのorderByは対象フィールドがない既存docを返さない。
 // 本番適用前に docs/firestore-retention.md の inspectionWorks 日付フィールド補完を完了すること。
